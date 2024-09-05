@@ -60,21 +60,21 @@ Load10X_Spatial <- function(data.dir, filename = "filtered_feature_bc_matrix.h5"
 #       I am not sure what the matrices in the root of the spaceranger output are, but there are missing files in the spatial folder which makes the data not usable.
 # NOTE: Only got binsize of 48um working. Smaller bin size all result in SCTransform crashes due to NA values in UMI counts.
 #       This can probably be resolved by adding a filtering step to remove empty bins.
-
-data.dir <- "~/topsecret/spaceranger/binned_outputs/square_048um/"
-
-seuratObj <- Load10X_Spatial(data.dir)
-
-# The default Seurat point size for spatial plots does not work well with Visium HD. The pt.size scale factor should be set to make the plots somewhat readable.
-# This scale factor can probably be deduced from something, but didn't look into this yet so now its just manual trial and error :)
-
-VlnPlot(seuratObj, features = "nCount_Spatial", pt.size = 0.1) + NoLegend()
-SpatialFeaturePlot(seuratObj, features = "nCount_Spatial", pt.size.factor = 0.07) + theme(legend.position = "right")
-
-seuratObj <- SCTransform(seuratObj, assay = "Spatial", verbose = FALSE)
-seuratObj <- RunPCA(seuratObj, assay = "SCT", verbose = FALSE)
-seuratObj <- FindNeighbors(seuratObj, reduction = "pca", dims = 1:30)
-seuratObj <- FindClusters(seuratObj, verbose = FALSE)
-seuratObj <- RunUMAP(seuratObj, reduction = "pca", dims = 1:30)
-
-SpatialDimPlot(seuratObj, pt.size.factor = 0.25)
+# 
+# data.dir <- "~/topsecret/spaceranger/binned_outputs/square_048um/"
+# 
+# seuratObj <- Load10X_Spatial(data.dir)
+# 
+# # The default Seurat point size for spatial plots does not work well with Visium HD. The pt.size scale factor should be set to make the plots somewhat readable.
+# # This scale factor can probably be deduced from something, but didn't look into this yet so now its just manual trial and error :)
+# 
+# VlnPlot(seuratObj, features = "nCount_Spatial", pt.size = 0.1) + NoLegend()
+# SpatialFeaturePlot(seuratObj, features = "nCount_Spatial", pt.size.factor = 0.07) + theme(legend.position = "right")
+# 
+# seuratObj <- SCTransform(seuratObj, assay = "Spatial", verbose = FALSE)
+# seuratObj <- RunPCA(seuratObj, assay = "SCT", verbose = FALSE)
+# seuratObj <- FindNeighbors(seuratObj, reduction = "pca", dims = 1:30)
+# seuratObj <- FindClusters(seuratObj, verbose = FALSE)
+# seuratObj <- RunUMAP(seuratObj, reduction = "pca", dims = 1:30)
+# 
+# SpatialDimPlot(seuratObj, pt.size.factor = 0.25)
