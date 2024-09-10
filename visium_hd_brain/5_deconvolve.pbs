@@ -1,0 +1,9 @@
+#!/bin/bash -l
+#PBS -l nodes=1:ppn=1
+#PBS -l walltime=06:00:00
+#PBS -l mem=128gb
+#PBS -e logs/
+#PBS -o logs/
+
+cd $PBS_O_WORKDIR
+nextflow run main.nf -profile hpc -c $VSC_DATA_VO_USER/visium-hd/visium_hd_brain/run_cell2location.config -ansi-log false
