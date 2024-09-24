@@ -5,7 +5,7 @@ import os
 # Get argument from the command line
 import sys
 if len(sys.argv) != 2:
-    print("Usage: python download_ABA_sc.py <task_id>")
+    print("Usage: python 1_1_download_ABA_sc.py <task_id>")
     sys.exit(1)
 
 task_id = int(sys.argv[1])

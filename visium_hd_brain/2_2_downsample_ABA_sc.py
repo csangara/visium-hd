@@ -4,7 +4,7 @@ import pandas as pd
 import anndata as ad
 
 if len(sys.argv) != 2:
-    print("Usage: python downsample_ABA_sc.py <task_id>")
+    print("Usage: python 2_2_downsample_ABA_sc.py <task_id>")
     sys.exit(1)
 
 task_id = int(sys.argv[1])

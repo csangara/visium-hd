@@ -7,7 +7,7 @@
 
 module load Single-cell-python-bundle/2024.02-foss-2023a
 cd $PBS_O_WORKDIR
-python 3_downsample_ABA_sc.py ${PBS_ARRAYID}
+python 2_2_downsample_ABA_sc.py ${PBS_ARRAYID}
 
 # TO SUBMIT:
 # cd to the directory of this script

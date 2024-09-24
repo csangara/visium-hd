@@ -5,9 +5,9 @@
 #PBS -o logs/
 
 cd $PBS_O_WORKDIR
-python 1_download_ABA_sc.py ${PBS_ARRAYID}
+python 1_1_download_ABA_sc.py ${PBS_ARRAYID}
 
 # TO SUBMIT:
 # cd to the directory of this script
 # module load worker/1.6.12-foss-2021b
-# wsub -t 1-26 -batch 1_download_ABA_sc.pbs
+# wsub -t 1-26 -batch 1_1_download_ABA_sc.pbs
