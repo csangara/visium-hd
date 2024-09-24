@@ -1,0 +1,9 @@
+#!/bin/bash -l
+#PBS -l nodes=1:ppn=1
+#PBS -l walltime=05:00:00
+#PBS -l mem=4gb
+#PBS -e logs/
+#PBS -o logs/
+
+cd $VSC_DATA_VO_USER/spatial_datasets/scref_Lung_Guo
+wget https://lungmap-breath-data.s3.amazonaws.com/LMEX0000004396/download/LungMAP_HumanLung_CellRef.v1.1.h5ad
