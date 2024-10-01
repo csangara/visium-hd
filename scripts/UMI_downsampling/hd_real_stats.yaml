@@ -1,0 +1,21 @@
+# Stats obtained from 10x Visium HD Coronal
+# readRDS("/home/chananchidas/visium-hd/data/Visium_HD_MouseBrain/Visium_HD_MouseBrain_008um.rds")
+# mean(colSums(GetAssayData(visium_obj, layer="counts"))) # 225.4
+# sd(colSums(GetAssayData(visium_obj, layer="counts"))) # 209.59
+
+synthspot:
+  sc_input: /home/chananchidas/spotless-benchmark/data/sc_datasets/brain_cortex_generation.rds
+  clust_var: celltype
+  region_var: brain_subregion
+  type: real
+  reps: 3
+  dataset_id: "1"
+  n_spots_min: 2000
+  n_spots_max: 3000
+  visium_mean: 225
+  visium_sd: 210
+  n_cells_min: 1
+  n_cells_max: 2
+
+outdir:
+  synthspot: /home/chananchidas/visium-hd/data/MouseBrain_UMI_downsampling

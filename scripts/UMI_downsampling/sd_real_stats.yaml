@@ -1,0 +1,19 @@
+# Stats obtained from 10x Visium Coronal
+# visium_sd <- Seurat::Load10X_Spatial("/run/media/chananchidas/T7 Touch/spotless-benchmark/data/raw_data/mousebrain_visium_10xdemo/coronal")
+# mean(colSums(GetAssayData(visium_sd, layer="counts"))) # 31759
+# sd(colSums(GetAssayData(visium_sd, layer="counts"))) # 15870
+
+synthspot:
+  sc_input: /home/chananchidas/spotless-benchmark/data/raw_data/sc_datasets/brain_cortex_generation.rds
+  clust_var: celltype
+  region_var: brain_subregion
+  type: real
+  reps: 3
+  dataset_id: "1"
+  n_spots_min: 2000
+  n_spots_max: 3000
+  visium_mean: 32000
+  visium_sd: 16000
+  n_cells_min: 2
+  n_cells_max: 10
+
