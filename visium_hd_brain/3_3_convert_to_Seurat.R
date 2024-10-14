@@ -6,3 +6,9 @@
 # use_condaenv('python_r')
 # sceasy::convertFormat(h5ad_file, from="anndata", to="seurat",
 #                       outFile='filename.rds')
+
+
+# Or directly load the data
+visium_obj <- Load10X_Spatial(data.dir = "data/Visium_HD_MouseBrain/", bin.size = 8)
+
+saveRDS(visium_obj, "data/Visium_HD_MouseBrain/Visium_HD_MouseBrain_008um.rds")
