@@ -1,0 +1,18 @@
+#!/bin/bash -l
+#PBS -l nodes=1:ppn=24
+#PBS -l walltime=08:00:00
+#PBS -l mem=66gb
+#PBS -e logs/
+#PBS -o logs/
+
+module load Nextflow/24.10.2
+
+cd $PBS_O_WORKDIR
+
+# Generate and run the whole pipeline
+nextflow run $VSC_DATA_VO_USER/spotless-benchmark/main.nf -profile hpc \
+-c $VSC_DATA_VO_USER/visium-hd/UMI_downsampling_liver/generate_and_run.config \
+--container_name csangara/sp_rctd:2.2.1-hd-seurat5.1.0 \
+-ansi-log false \
+# --container_name csangara/sp_rctd:latest
+# --container_name csangara/sp_rctd:2.2.1-seurat5.1.0
