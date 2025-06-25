@@ -1,16 +1,13 @@
-# To convert the data from AnnData to Seurat, use sceasy
-# conda activate python_r
-# R
-# library(sceasy)
-# library(reticulate)
-# use_condaenv('python_r')
-# sceasy::convertFormat("Visium_HD_Liver_032um.h5ad", from="anndata", to="seurat",
-#                       outFile='Visium_HD_Liver_032um_sceasy.rds')
-
 library(Seurat)
 library(dplyr)
+library(schard)
 
-visium_obj <- readRDS("data/Visium_HD_Liver/Visium_HD_Liver_032um.rds")
+# Don't forget to run var_names_make_unique() on the h5ad data before this
+visium_obj <- schard::h5ad2seurat("data/Visium_HD_Liver/Visium_HD_Liver_032um.h5ad")
+visium_obj
+rownames(visium_obj)
+colnames(visium_obj)
+
 visium_obj <- SeuratObject::RenameAssays(visium_obj, assay.name = "RNA", new.assay.name = "Spatial.032um")
 
 # Rename cells
@@ -83,7 +80,5 @@ ggplot(data.frame(value = colSums(GetAssayData(visium_obj)))) +
   geom_histogram(aes(x = value), bins = 100) +
   labs(x = "Log10 Count", y = "Frequency") +
   theme_minimal()
-
-
 
 
