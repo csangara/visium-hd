@@ -5,36 +5,45 @@ library(shadowtext)
 library(precrec)
 library(ggridges)
 
-repl <- 2
+repl <- 3
 # Analyze downsampling results
-doublet_props <- read.table(paste0("UMI_downsampling/brain_cortex_generation_real/proportions_rctd_brain_cortex_generation_real_rep",
-                                   repl, "_2.2.1-hd-seurat5.1.0"), header = TRUE)
-doublet_info <- read.table(paste0("UMI_downsampling/brain_cortex_generation_real/proportions_rctd_brain_cortex_generation_real_rep",
-                                  repl, "_2.2.1-hd-seurat5.1.0_doublet_info.tsv"), header = TRUE)
+doublet_props <- read.table(paste0("UMI_downsampling_liver/liver_mouseStSt_exVivo_9celltypes_annot_cd45_artificial_dominant_celltype_diverse/proportions_rctd_liver_mouseStSt_exVivo_9celltypes_annot_cd45_artificial_dominant_celltype_diverse_rep",
+                                   repl), header = TRUE)
+doublet_info <- read.table(paste0("UMI_downsampling_liver/liver_mouseStSt_exVivo_9celltypes_annot_cd45_artificial_dominant_celltype_diverse/proportions_rctd_liver_mouseStSt_exVivo_9celltypes_annot_cd45_artificial_dominant_celltype_diverse_rep",
+                                  repl, "_doublet_info.tsv"), header = TRUE)
 
-synth_obj <- readRDS(paste0("data/MouseBrain_UMI_downsampling/brain_cortex_generation_real_rep", repl, ".rds"))
+synth_obj <- readRDS(paste0("data/MouseLiver_UMI_downsampling/liver_mouseStSt_exVivo_9celltypes_annot_cd45_artificial_dominant_celltype_diverse_rep", repl, ".rds"))
 ground_truth <- synth_obj$relative_spot_composition
+prior_freq <- synth_obj$gold_standard_priorregion
 
 # Subset ground truth to rows in doublet_info
-ground_truth %>% dim # 11266
+ground_truth %>% dim # 13494
 ground_truth <- ground_truth %>% filter(name %in% doublet_info$spot) %>% select(-region) %>% 
   column_to_rownames("name") %>%
   `colnames<-`(stringr::str_replace_all(colnames(.), "[/ .]", "")) %>% 
   .[,sort(colnames(.), method="shell")]
 
 # Correlation and RMSE
-corr_spots <- mean(diag(cor(t(ground_truth), t(doublet_props))))
-RMSE <- mean(sqrt(rowSums((ground_truth-doublet_props)**2)/ncol(ground_truth)))
+mean(diag(cor(t(ground_truth), t(doublet_props))))
+mean(sqrt(rowSums((ground_truth-doublet_props)**2)/ncol(ground_truth)))
 
 # Get ground truth singlet and doublet
+# Doublet = two different cell types
 ground_truth_class <- synth_obj$spot_composition %>% 
   filter(name %in% doublet_info$spot) %>% 
-  mutate(n_cells = rowSums(across(Astro:VLMC)),
-        spot_class = case_when(n_cells == 1 ~ "singlet",
-                               n_cells == 2 ~ "doublet_certain")) %>% 
-  select(-(Astro:VLMC))
+  # Get number of unique cell types
+  mutate(n_celltypes = rowSums(across(B.cells:T.cells) > 0),
+         spot_class = case_when(n_celltypes == 1 ~ "singlet",
+                                n_celltypes == 2 ~ "doublet_certain")) %>% 
+  select(-(B.cells:T.cells)) %>% 
+  # Filter out spots whose n_celltypes > 2
+  filter(n_celltypes <= 2)
 
 classes <- doublet_info$spot_class %>% unique
+
+doublet_props <- doublet_props[doublet_info$spot %in% ground_truth_class$name, ]
+doublet_info <- doublet_info %>% filter(spot %in% ground_truth_class$name)
+ground_truth <- ground_truth[ground_truth_class$name, ]
 
 confusionMatrix(doublet_info$spot_class %>% factor(levels=classes),
                 ground_truth_class$spot_class %>% factor(levels=classes))
@@ -44,15 +53,9 @@ ground_truth_counts <- synth_obj$counts %>%
   .[, colnames(.) %in% doublet_info$spot]
 
 # Histogram
-png(paste0("UMI_downsampling/plots/synth_obj_rep", repl,"_counts_hist.png"), width=6, height=4, units="in", res=300)
+png(paste0("UMI_downsampling_liver/plots/synth_obj_rep", repl,"_counts_hist.png"), width=6, height=4, units="in", res=300)
 ground_truth_counts %>% colSums %>% hist(breaks=100, xlab="UMI Counts", main=paste0("Histogram of rep ", repl))
 dev.off()
-
-# Compare to silver standard
-# png(paste0("UMI_downsampling/plots/silver_standard_1-10_rep1_counts_hist_log.png"), width=6, height=4, units="in", res=300)
-# readRDS("~/spotless-benchmark/standards/silver_standard_1-10/brain_cortex_real_rep1.rds")$counts %>% colSums %>% 
-#   hist(breaks=100, xlab="UMI Counts", main="Histogram of silver standard")
-# dev.off()
 
 
 # Divide per bin of 100 UMIs
@@ -106,9 +109,18 @@ ggplot(acc_df, aes(x=bins, y=Accuracy, group=1)) +
   theme_classic(base_size=24) +
   ylim(0, 1) +
   labs(x = "UMI Counts Per Spot", y="Accuracy of spot class prediction", size="# spots in bin") +
-  theme(legend.position.inside=c(0.25, 0.9),
+  theme(legend.position.inside=c(0.9, 0.5),
         legend.position="inside")
-ggsave("UMI_downsampling/plots/spotclass_accuracy_per_bin.png", width=8, height=8, dpi=300)
+ggsave("UMI_downsampling_liver/plots/spotclass_accuracy_per_bin.png", width=8, height=8, dpi=300)
+
+ggplot(gt_counts_df, aes(x=counts_bin, fill=spot_class)) +
+  geom_bar(position="fill") +
+  scale_fill_manual(values=c("singlet"="forestgreen", "doublet_certain"="navyblue"),
+                    breaks=classes) +
+  scale_x_discrete(breaks=names(bin_names_right)[c(1, 5, 10, 15, 20, 21)],
+                   labels=bin_names_right[c(1, 5, 10, 15, 20, 21)]) +
+  theme_classic() +
+  labs(x = "UMI Counts Per Spot", y="Proportion of spots", fill="Spot class")
 
 ggplot(class_metrics_df %>% filter(name=="F1", type %in% c("singlet", "doublet_certain")),
        aes(x=bins, y=value, color=factor(type, levels=c("singlet", "doublet_certain")), group=type)) +
@@ -120,9 +132,9 @@ ggplot(class_metrics_df %>% filter(name=="F1", type %in% c("singlet", "doublet_c
   theme_classic() +
   ylim(0, 1) +
   labs(x = "UMI Counts Per Spot", y="F1 Score", color="Predicted spot class") +
-  theme(legend.position.inside=c(0.15, 0.9),
+  theme(legend.position.inside=c(0.7, 0.85),
         legend.position="inside")
-ggsave("UMI_downsampling/plots/spotclass_F1_per_bin.png", width=8, height=8)
+ggsave("UMI_downsampling_liver/plots/spotclass_F1_per_bin.png", width=8, height=8)
 
 conf_matrices_df <-  purrr::map(conf_matrices, "table") %>% 
   lapply (function(mat) {
@@ -154,7 +166,7 @@ p_conf_mat <- ggplot(conf_matrices_df, aes(x=Reference, y=Prediction, fill=Freq)
 p_conf_mat_tab <- ggplotGrob(p_conf_mat)
 
 
-ggsave("UMI_downsampling/plots/spotclass_confusion_matrix_per_bin.png", 
+ggsave("UMI_downsampling_liver/plots/spotclass_confusion_matrix_per_bin.png", 
        # Filter out top axes 2-21 (only keep the first one)
        plot=grid::grid.draw(gtable::gtable_filter(p_conf_mat_tab, "axis-t-([2-9]|1[0-9]|2[0-1])", invert=TRUE)),
        width=20, height=3, bg="white")
@@ -173,14 +185,14 @@ ggplot(doublet_info, aes(x=singlet_score, y=min_score, color=factor(spot_class, 
   guides(color = guide_legend(override.aes = list(size = 3))) +
   #facet_wrap(~spot_class) +
   theme_classic()
-ggsave("UMI_downsampling/plots/singlet_vs_min_score.png", width=8, height=5)
+ggsave("UMI_downsampling_liver/plots/singlet_vs_min_score.png", width=8, height=5)
 
-gt_binary_bins <- gt_counts_df %>% select(spot, counts_bin, n_cells) %>%
+gt_binary_bins <- gt_counts_df %>% select(spot, counts_bin, n_celltypes) %>%
   filter(spot %in% doublet_info$spot) %>%
   column_to_rownames("spot") %>% 
   group_by(counts_bin) %>% 
   group_split(.keep=FALSE) %>% 
-  purrr::map(pull, n_cells)
+  purrr::map(pull, n_celltypes)
 
 doublet_props_bins <- gt_counts_df %>% select(spot, counts_bin) %>% 
   inner_join(doublet_info %>% select(spot, min_score), by="spot") %>% 
@@ -189,7 +201,7 @@ doublet_props_bins <- gt_counts_df %>% select(spot, counts_bin) %>%
   group_split(.keep=FALSE) %>% 
   purrr::map(pull, min_score)
 
-# Calculate doublet classification AUPR per bin
+# Calculate doublet classification AUPR per bin, based on min score
 model <- mmdata(doublet_props_bins, gt_binary_bins, dsids=1:21)
 curve <- evalmod(model)
 prc <- subset(auc(curve), curvetypes=="PRC") %>% rename(method=modnames)
@@ -217,7 +229,7 @@ ggplot(doublet_info_bins, aes(y=forcats::fct_rev(counts_bin), fill=factor(spot_c
                     labels=bin_names_right[c(1, 5, 10, 15, 20, 21)]) +
   theme_classic() +
   labs(y = "UMI Counts Per Spot", x="Proportion of spots", fill="Predicted spot class")
-ggsave("UMI_downsampling/plots/spotclass_proportion_per_bin.png", width=8, height=5)
+ggsave("UMI_downsampling_liver/plots/spotclass_proportion_per_bin.png", width=8, height=5)
 
 # Check AUPR per bin
 gt_binary_bins <- gt_counts_df %>% select(spot, counts_bin) %>% 
@@ -260,45 +272,84 @@ ggplot(prc, aes(x=factor(dsids), y=aucs)) +
   ylim(c(0,1)) +
   labs(x = "UMI Counts Per Spot", y="Cell type prediction AUPR") +
   theme_classic(base_size=24)
-ggsave("UMI_downsampling/plots/celltype_AUPR_per_bin.png", width=8, height=8)
+ggsave("UMI_downsampling_liver/plots/celltype_AUPR_per_bin.png", width=8, height=8)
 
-# What is the AUPR of cell type prediction per spot class per bin?
-aupr_curves <- lapply(levels(gt_counts_df$counts_bin), function(bin) {
-  props_list <- lapply(c("ground_truth", "predicted"), function(x) {
-    gt_counts_df %>% 
-      filter(counts_bin %in% bin) %>% 
-      select(spot) %>% 
-      # Get spot prediction
-      inner_join(doublet_info %>% select(spot, spot_class), by="spot") %>% 
-      # Join with corresponding proportions (ground truth or predicted)
-      {if (x == "ground_truth") {
-        inner_join(., ifelse(ground_truth > 0, "present", "absent") %>% data.frame %>% 
-                     rownames_to_column("spot"), by="spot")
-      } else {
-        inner_join(., doublet_props %>% data.frame %>% 
-                     mutate(spot = doublet_info$spot), by="spot")
-      }} %>%
-      column_to_rownames("spot") %>% 
-      mutate(spot_class = factor(spot_class, levels=classes)) %>% 
-      group_by(spot_class) %>% 
-      group_split(.keep=FALSE) %>% 
-      purrr::map(function(x) c(as.matrix(x)))
-  
-  })
+# Calculate AUPR per bin for the dominant cell type vs others
+dom_celltype <- prior_freq %>% filter(present) %>%
+  slice_max(freq, with_ties = FALSE) %>% pull(celltype)
+other_celltypes <- prior_freq %>% filter(present) %>% 
+  filter(celltype != dom_celltype) %>% 
+  mutate(celltype = stringr::str_replace_all(celltype, "[/ .]", ""))
+dom_celltype <- stringr::str_replace_all(dom_celltype, "[/ .]", "")
 
-  model <- mmdata(props_list[[2]], props_list[[1]], dsids=1:4)
-  curve <- evalmod(model)
-  prc <- subset(auc(curve), curvetypes=="PRC") %>% rename(method=modnames) %>% 
-    select(-curvetypes) %>% mutate(bin=bin)
-  prc
-}) %>% do.call(rbind, .)
 
-ggplot(aupr_curves, aes(x=factor(dsids), y=aucs)) +
-  geom_boxplot() +
+gt_binary_bins_nodom <- gt_counts_df %>% select(spot, counts_bin) %>%
+  inner_join(ifelse(ground_truth > 0, "present", "absent") %>% data.frame %>%
+               rownames_to_column("spot"), by="spot") %>%
+  select(!contains(dom_celltype)) %>%
+  column_to_rownames("spot") %>%
+  group_by(counts_bin) %>%
+  group_split(.keep=FALSE) %>%
+  purrr::map(function(x) c(as.matrix(x)))
+
+doublet_props_bins_nodom <- gt_counts_df %>% select(spot, counts_bin) %>%
+  inner_join(doublet_props %>% data.frame %>%
+               mutate(spot = doublet_info$spot), by="spot") %>%
+  select(!contains(dom_celltype)) %>%
+  column_to_rownames("spot") %>% 
+  group_by(counts_bin) %>%
+  group_split(.keep=FALSE) %>%
+  purrr::map(function(x) c(as.matrix(x)))
+
+doublet_props_dom_recall <- gt_counts_df %>% select(spot, counts_bin) %>%
+  inner_join(doublet_props %>% data.frame %>%
+             mutate(spot = doublet_info$spot), by="spot") %>%
+  select(spot, counts_bin, contains(dom_celltype)) %>%
+  column_to_rownames("spot") %>% 
+  rename(c(dom_props = any_of(dom_celltype))) %>% 
+  group_by(counts_bin) %>%
+  summarise(recall = sum(dom_props > 0)/n())
+
+# ggplot(doublet_props_bins_dom, aes(x=counts_bin, y=Mesothelialcells)) +
+#   geom_boxplot() +
+#   theme_classic()
+
+# Calculate overall AUPR
+# gt_binary_nodom <- ifelse(ground_truth > 0, "present", "absent") %>%
+#   reshape2::melt() %>% dplyr::select(value)
+
+# Area under precision-recall curve
+# eval_prc <- evalmod(scores = c(as.matrix(doublet_props)), labels=gt_binary)
+# prc <- subset(auc(eval_prc), curvetypes == "PRC")$aucs
+# prc
+
+
+
+# Calculate AUPR per bin
+model <- mmdata(doublet_props_bins_nodom, gt_binary_bins_nodom, dsids=1:21)
+curve <- evalmod(model)
+prc <- subset(auc(curve), curvetypes=="PRC") %>% rename(method=modnames)
+
+prc_precision <- bind_rows(
+  prc,
+  doublet_props_dom_recall %>% mutate(method = "m1",
+                                         counts_bin = as.numeric(counts_bin),
+                                         curvetypes="recall") %>% 
+    rename(dsids = counts_bin,
+           aucs = recall
+    )
+)
+
+ggplot(prc_precision, aes(x=factor(dsids), y=aucs, group=curvetypes, color=curvetypes)) +
+  geom_point(size=3) +
+  geom_line() +
+  scale_x_discrete(breaks=c(1, 5, 10, 15, 20, 21),
+                   labels=bin_names_right %>% setNames(1:21) %>%
+                     .[c(1, 5, 10, 15, 20, 21)]) +
   ylim(c(0,1)) +
-  scale_x_discrete(labels=classes) +
-  ggtitle("AUPR of cell type classification") +
-  theme_classic() +
-  theme(axis.title = element_blank())
-ggsave("UMI_downsampling/plots/boxplot_celltype_AUPR_per_spotclass_per_bin.png", width=6, height=4)
+  labs(x = "UMI Counts Per Spot", y="Cell type prediction AUPR") +
+  theme_classic(base_size=24)
 
+ggsave("UMI_downsampling_liver/plots/celltype_AUPR_and_dominant_precision_per_bin.png", width=8, height=8)
+
+# TODO: CALCULATE RECALL OF OTHER CELL TYPES (PER REGION)
