@@ -33,7 +33,7 @@ color_palette <- c("Hepatocytes" = "#B4B5B5FF",
 
 celltype_order <- names(color_palette)
                    
-bin_size <- 32 # 8, 16, or 32
+bin_size <- 8 # 8, 16, or 32
 
 # Fill the text with 0
 bin_size_str <- sprintf("%03dum", bin_size)
@@ -141,7 +141,7 @@ p_scatterpie <- ggplot() +
   theme(legend.title = element_blank(),
         legend.text = element_text(size = 6),
         legend.key.size = unit(0.5, "cm"))
-ggsave(paste0(plot_path, "scatterpie_ROI", roi_name, "_", bin_size_str, ".png"),
+ggsave(paste0(plot_path, "spatialscatterpie_ROI", roi_name, "_", bin_size_str, ".png"),
        p_scatterpie, width = 10, height = 8, bg = "white")
 
 deconv_props_df_square <- deconv_props_df %>%
@@ -200,10 +200,56 @@ ggplot(deconv_props_df_shapes, aes(x = x, y = y, group = group)) +
         legend.text = element_text(size = 6),
         legend.key.size = unit(0.5, "cm"))
 
-ggsave(paste0(plot_path, "spatialdimplot_doublet_celltype_ROI", roi_name, "_",
+ggsave(paste0(plot_path, "spatialtriplot_doublet_celltype_ROI", roi_name, "_",
               bin_size_str, ".png"),
        width = 10, height = 8, bg = "white")
 
+# Create barplot in squares
+deconv_props_df_barplot <- deconv_props_df %>% 
+  filter(n_celltypes == 2) %>% 
+  group_by(spot) %>% arrange(spot, desc(proportion)) %>% 
+  mutate(rank = row_number(),
+         group = paste0(spot, "_", rank)) %>% 
+  mutate(x1 = case_when(rank == 1 ~ y - (square_size / 2) + (proportion*square_size),
+                        rank == 2 ~ y + (square_size / 2) - (proportion*square_size)),
+         y1 = x - square_size / 2,
+         x2 = case_when(rank == 1 ~ y - (square_size / 2) + (proportion*square_size),
+                        rank == 2 ~ y + (square_size / 2) - (proportion*square_size)),
+         y2 = x + square_size / 2,
+         x3 = case_when(rank == 1 ~ y - square_size / 2,
+                        rank == 2 ~ y + square_size / 2),
+         y3 = x + square_size / 2,
+         x4 = case_when(rank == 1 ~ y - square_size / 2,
+                        rank == 2 ~ y + square_size / 2),
+         y4 = x - square_size / 2
+  ) %>% 
+  rename(coord_x = x, coord_y = y) %>%
+  pivot_longer(cols = c(x1, y1, x2, y2, x3, y3, x4, y4),
+               names_to = c(".value", "corner"),
+               names_pattern = "(x|y)([1-4])")
+
+deconv_props_df_shapes <- bind_rows(deconv_props_df_square, deconv_props_df_barplot) %>% 
+  mutate(celltype = factor(celltype, levels = celltype_order))
+
+# Create the ggplot
+ggplot(deconv_props_df_shapes, aes(x = x, y = y)) +
+  geom_polygon(aes(fill = celltype, group=group)) +
+  # White border
+  geom_tile(data = deconv_props_df %>% distinct(x, y),
+            aes(x = y, y = x), height = square_size, width = square_size,
+            fill = NA, color = "white") +
+  scale_fill_manual(values = color_palette) +
+  scale_y_reverse() +
+  coord_fixed() +
+  theme_void() +
+  guides(fill = guide_legend(ncol = 1)) +
+  theme(legend.title = element_blank(),
+        legend.text = element_text(size = 6),
+        legend.key.size = unit(0.5, "cm"))
+
+ggsave(paste0(plot_path, "spatialbarplot_doublet_celltype_ROI", roi_name, "_",
+              bin_size_str, ".png"),
+       width = 10, height = 8, bg = "white")
 
 SpatialDimPlot(visium_obj_roi,
                group.by = "celltype",
