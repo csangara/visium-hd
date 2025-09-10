@@ -33,7 +33,7 @@ color_palette <- c("Hepatocytes" = "#B4B5B5FF",
 
 celltype_order <- names(color_palette)
 
-bin_size <- 32 # 8, 16, or 32
+bin_size <- 16 # 8, 16, or 32
 
 # Fill the text with 0
 bin_size_str <- sprintf("%03dum", bin_size)
@@ -107,6 +107,14 @@ SpatialFeaturePlot(visium_obj_roi, "Hal", slot="counts",
 ggsave(paste0(plot_path, "spatialfeatureplot_Hal_ROI", roi_name, "_",
               bin_size_str, ".png"),
        width = 8, height = 8, bg = "white")
+
+SpatialFeaturePlot(visium_obj_roi, "Spp1", slot="counts",
+                   stroke=NA, image.alpha=0, pt.size.factor=12)
+ggsave(paste0(plot_path, "spatialfeatureplot_Epcam_ROI", roi_name, "_",
+              bin_size_str, ".png"),
+       width = 8, height = 8, bg = "white")
+
+
 square_size <- visium_obj_subset@images[[paste0("slice1.", bin_size_str)]]@scale.factors$spot
 
 deconv_props_roi <- deconv_props[rownames(deconv_props) %in% cells_roi, ]
@@ -141,7 +149,7 @@ p_scatterpie <- ggplot() +
   theme(legend.title = element_blank(),
         legend.text = element_text(size = 6),
         legend.key.size = unit(0.5, "cm"))
-ggsave(paste0(plot_path, "scatterpie_ROI", roi_name, "_", bin_size_str, ".png"),
+ggsave(paste0(plot_path, "spatialscatterpie_ROI", roi_name, "_", bin_size_str, ".png"),
        p_scatterpie, width = 10, height = 8, bg = "white")
 
 deconv_props_df_square <- deconv_props_df %>%
@@ -200,10 +208,56 @@ ggplot(deconv_props_df_shapes, aes(x = x, y = y, group = group)) +
         legend.text = element_text(size = 6),
         legend.key.size = unit(0.5, "cm"))
 
-ggsave(paste0(plot_path, "spatialdimplot_doublet_celltype_ROI", roi_name, "_",
+ggsave(paste0(plot_path, "spatialtriplot_doublet_celltype_ROI", roi_name, "_",
               bin_size_str, ".png"),
        width = 10, height = 8, bg = "white")
 
+# Create barplot in squares
+deconv_props_df_barplot <- deconv_props_df %>% 
+  filter(n_celltypes == 2) %>% 
+  group_by(spot) %>% arrange(spot, desc(proportion)) %>% 
+  mutate(rank = row_number(),
+         group = paste0(spot, "_", rank)) %>% 
+  mutate(x1 = case_when(rank == 1 ~ y - (square_size / 2) + (proportion*square_size),
+                        rank == 2 ~ y + (square_size / 2) - (proportion*square_size)),
+         y1 = x - square_size / 2,
+         x2 = case_when(rank == 1 ~ y - (square_size / 2) + (proportion*square_size),
+                        rank == 2 ~ y + (square_size / 2) - (proportion*square_size)),
+         y2 = x + square_size / 2,
+         x3 = case_when(rank == 1 ~ y - square_size / 2,
+                        rank == 2 ~ y + square_size / 2),
+         y3 = x + square_size / 2,
+         x4 = case_when(rank == 1 ~ y - square_size / 2,
+                        rank == 2 ~ y + square_size / 2),
+         y4 = x - square_size / 2
+  ) %>% 
+  rename(coord_x = x, coord_y = y) %>%
+  pivot_longer(cols = c(x1, y1, x2, y2, x3, y3, x4, y4),
+               names_to = c(".value", "corner"),
+               names_pattern = "(x|y)([1-4])")
+
+deconv_props_df_shapes <- bind_rows(deconv_props_df_square, deconv_props_df_barplot) %>% 
+  mutate(celltype = factor(celltype, levels = celltype_order))
+
+# Create the ggplot
+ggplot(deconv_props_df_shapes, aes(x = x, y = y)) +
+  geom_polygon(aes(fill = celltype, group=group)) +
+  # White border
+  geom_tile(data = deconv_props_df %>% distinct(x, y),
+            aes(x = y, y = x), height = square_size, width = square_size,
+            fill = NA, color = "white") +
+  scale_fill_manual(values = color_palette) +
+  scale_y_reverse() +
+  coord_fixed() +
+  theme_void() +
+  guides(fill = guide_legend(ncol = 1)) +
+  theme(legend.title = element_blank(),
+        legend.text = element_text(size = 6),
+        legend.key.size = unit(0.5, "cm"))
+
+ggsave(paste0(plot_path, "spatialbarplot_doublet_celltype_ROI", roi_name, "_",
+              bin_size_str, ".png"),
+       width = 10, height = 8, bg = "white")
 
 SpatialDimPlot(visium_obj_roi,
                group.by = "celltype",
@@ -244,6 +298,11 @@ ggsave(paste0(plot_path, "barplot_avg_across_tissue_", bin_size_str, ".png"), p,
        width = 8, height = 6, bg = "white")
 
 
+deconv_props_df <- deconv_props %>% 
+  rownames_to_column("spot") %>%
+  pivot_longer(cols = -spot, names_to = "celltype",
+               values_to = "proportion")
+
 # What is the distribution of cell types across the tissue?
 p_boxplot_all <- ggplot(deconv_props_df %>% filter(proportion > 0.0001),
                         aes(y=reorder(celltype, proportion, median), x=proportion)) +
@@ -260,6 +319,25 @@ p_boxplot_all
 ggsave(paste0(plot_path, "boxplot_all_", bin_size_str, ".png"), p_boxplot_all,
        width = 15, height = 8, bg = "white")
 
+# What is the proportion of the most abundant cell type in each spot?
+colnames(deconv_props)[deconv_props %>% apply(1, which.max)] %>% 
+  data.frame(celltype = .)
+
+# What is the second most abundant cell type in each spot?
+colnames(deconv_props)[apply(deconv_props, 1, function(x) order(x, decreasing = TRUE)[2])] %>% 
+  data.frame(celltype = .) %>%
+  # Calculate proportions
+  group_by(celltype) %>%
+  summarise(proportion = n() / nrow(deconv_props)) %>%
+  ggplot(aes(y=reorder(celltype, proportion), x=proportion)) +
+  geom_bar(stat="identity") +
+  scale_y_discrete() +
+  scale_x_continuous(expand = expansion(mult = c(0.02, 0.02))) +
+  theme_minimal(base_size = 8) +
+  theme(axis.title = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.grid.major.y = element_blank()) +
+  ggtitle("Proportion of second most abundant cell type in each spot")
 
 # DOUBLET MODE
 doublet_props <- read.table(paste0(proportions_path, "_", bin_size_str,
