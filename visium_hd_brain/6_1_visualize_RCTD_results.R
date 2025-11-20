@@ -4,10 +4,16 @@ library(RColorBrewer)
 qual_col_pals = brewer.pal.info[brewer.pal.info$category == 'qual',]
 col_vector = unlist(mapply(brewer.pal, qual_col_pals$maxcolors, rownames(qual_col_pals)))
 
+celltype_colors_df <- read.csv("data/scref_MouseBrain_ABA/cell_metadata_with_cluster_annotation_downsampled.csv") %>%
+  distinct(class, class_color) %>% 
+  mutate(class = str_replace_all(class, "[- ]", "")) %>% 
+  mutate(class = paste0("X", class)) %>% arrange(class)
+celltype_colors <- celltype_colors_df$class_color %>% setNames(celltype_colors_df$class)  
+
 visium_obj <- readRDS("data/Visium_HD_MouseBrain/Visium_HD_MouseBrain_008um.rds")
 dim(visium_obj) # 19059 genes x 393543 spots
 
-ext <- "_converted_full" # "", "_converted_doublet", "_converted_full"
+ext <- "_converted_doublet" # "", "_converted_doublet", "_converted_full"
 
 deconv_props <- read.table(paste0("visium_hd_brain/Visium_HD_MouseBrain_008um/proportions_rctd_Visium_HD_MouseBrain_008um", ext),
                            header = TRUE)
@@ -47,15 +53,25 @@ ggsave("visium_hd_brain/plots/spatialfeatureplot_nCount_subset.png", p_ncount_su
 
 # Assign barcode to most abundant cell type per spot
 all(rownames(deconv_props) == colnames(visium_obj_subset))
-visium_obj_subset$celltype <- colnames(deconv_props)[max.col(deconv_props)]
+visium_obj_subset$celltype <- factor(colnames(deconv_props)[max.col(deconv_props)],
+                                     levels = names(celltype_colors))
 
 p_celltype <- SpatialDimPlot(visium_obj_subset, group.by = "celltype",
                image.alpha = 0, stroke=NA) +
-  scale_fill_manual(values = col_vector) +
+  scale_fill_manual(values = celltype_colors,
+                    labels = function(x) gsub("^X", "", x),
+                    name="Cell type") +
   guides(fill = guide_legend(override.aes = list(size = 3))) +
-  theme(legend.position = "right")
-ggsave(paste0("visium_hd_brain/plots/spatialdimplot_celltype", ext, ".png"), p_celltype,
+  theme(legend.position = "right",
+        legend.text = element_text(size=6),
+        legend.title = element_text(size=7)
+        )
+p_celltype
+
+ggsave(paste0("visium_hd_brain/plots/spatialdimplot_celltype", ext, ".pdf"), p_celltype,
        width = 8, height = 6, bg = "white")
+# ggsave(paste0("visium_hd_brain/plots/spatialdimplot_celltype", ext, ".png"), p_celltype,
+#        width = 8, height = 6, bg = "white")
 
 # Get region annotations
 region_annotations <- readRDS("data/Visium_HD_MouseBrain/tissue_positions_with_annotations_008um.rds")
@@ -103,15 +119,17 @@ deconv_props_summ <- deconv_props_df %>% group_by(region_broad, acronym_lvl6, ce
 p <- ggplot(deconv_props_summ, aes(x = acronym_lvl6, y = proportion, fill = celltype)) +
   geom_bar(stat = "identity", width=0.6) +
   theme_minimal(base_size = 8) +
-  scale_fill_manual(values = col_vector) +
+  scale_fill_manual(values = celltype_colors) +
   scale_y_continuous(expand = expansion(mult = c(0.02, 0.02))) +
   facet_grid(~region_broad, scales = "free_x", space='free') +
   theme(axis.title = element_blank(),
         panel.grid.major.x = element_blank(),
         legend.position = "none")
 p
-ggsave(paste0("visium_hd_brain/plots/barplot_avg_by_region", ext, ".png"), p,
+ggsave(paste0("visium_hd_brain/plots/barplot_avg_by_region", ext, ".pdf"), p,
        width = 8, height = 6, bg = "white")
+# ggsave(paste0("visium_hd_brain/plots/barplot_avg_by_region", ext, ".png"), p,
+#        width = 8, height = 6, bg = "white")
 
 
 # What is the distribution of cell types across the tissue?
