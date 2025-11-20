@@ -10,6 +10,6 @@ cd $PBS_O_WORKDIR
 nextflow run $VSC_DATA_VO_USER/spotless-benchmark/main.nf -profile hpc \
 -c $VSC_DATA_VO_USER/visium-hd/visiumify_55um/2_run_rctd.config -ansi-log false \
 --container_name csangara/sp_rctd:2.2.1-hd-seurat5.1.0 \
---bin_size 056um --doublet_mode full
+--bin_size 056um --doublet_mode doublet
 # --container_name csangara/sp_rctd:latest
 # --container_name csangara/sp_rctd:2.2.1-seurat5.1.0
