@@ -28,6 +28,14 @@ color_palette <- c("Hepatocytes" = "#B4B5B5FF",
                    "Neutrophils" = "#727272")
 
 celltype_order <- names(color_palette)
+
+celltype_labeller <- function(celltype_str){
+  celltype_str %>% stringr::str_replace_all("Endothelialcells", "ECs") %>%
+    stringr::str_replace_all("MonocytesMonocytederivedcells", "Mono & Mono-derived cells") %>%
+    stringr::str_replace_all("([A-Za-z]+)(cells)$", "\\1 \\2") %>%
+    stringr::str_replace_all("([a-z]{2,})([A-Z])", "\\1 \\2")
+}
+
 plot_path <- paste0("visium_hd_liver_combined/plots/")
 first_run <- FALSE
 bin_sizes <- c(8, 16, 32)
@@ -41,6 +49,8 @@ for (dataset_name in c("sca002", "caw009")){
   proportions_path <- paste0("visium_hd_liver", dataset, "/Visium_HD_Liver", toupper(dataset))
   
   for (bin_size in bin_sizes){
+    # For the new one, do bin_sizes = c(16, 32) and ext <- "_full"
+    # Don't forget to change saveRDS too
     gc()
     bin_size_str <- sprintf("%03dum", bin_size)
     
@@ -104,9 +114,20 @@ for (dataset_name in c("sca002", "caw009")){
   saveRDS(deconv_props_rank, paste0("visium_hd_liver_combined/rds/deconv_props_all.rds"))
 }
 
+deconv_props_rank_sub <- deconv_props_rank_old %>% 
+  filter(bin_size == "008um")
+
+deconv_props_rank_new <- deconv_props_rank_sub %>% 
+  bind_rows(deconv_props_rank)
+
+saveRDS(deconv_props_rank_new, paste0("visium_hd_liver_combined/rds/deconv_props_all_with_full.rds"))
+
+# deconv_props_all.rds - everything in doublet
+# deconv_props_full.rds - only 16um, 32um in full mode
+# deconv_props_all_with_full.rds - 8um in doublet, 16 and 32 in full mode
 
 #### PRINT TABLE OF MEAN PROPORTIONS ####
-deconv_props_rank <- readRDS(paste0("visium_hd_liver_combined/rds/deconv_props_all.rds"))
+deconv_props_rank <- readRDS(paste0("visium_hd_liver_combined/rds/deconv_props_all_with_full.rds"))
 
 dataset_binsize <- deconv_props_rank %>% ungroup() %>% 
   distinct(dataset, bin_size) %>% unite(dataset_bin, sep = "_") %>% 
@@ -138,6 +159,99 @@ mean_props %>% arrange(desc(dataset), bin_size) %>%
   mutate(celltype = stringr::str_replace_all(celltype, "([A-Za-z]+)(cells)$", "\\1 \\2")) %>%
   write_csv(paste0("visium_hd_liver_combined/tables/deconv_props_mean.csv"))
 
+
+color_palette_vizgen <- c("Hepatocytes" = "#B4B5B5FF",
+                          "Endothelialcells" = "#dca754",
+                          "Stromalcells" = "#79151e",
+                          "Kupffercells" = "#5DA6DBFF",
+                          "Otherimmunecells" = "#893A86FF",
+                          "Cholangiocytes" = "#C61B84FF",
+                          "Bcells" = "#9C7EBAFF")
+mean_props_vizgen <- mean_props %>%
+  # Remove spaces and dots from cell type names
+  mutate(annot_vizgen = gsub(" ", "", celltype)) %>%
+  # Group cell types into those matching vizgen
+  mutate(annot_vizgen = case_when(grepl("Mesothelial|Stellate|VSMC|Fibroblasts", celltype) ~ "Stromalcells",
+                                  grepl("Tcells|NKcells|Basophils|DC|Monocytes|ILC1s|Neutrophils|HsPCs", celltype) ~ "Otherimmunecells",
+                                  grepl("Endothelialcells|ECs", celltype) ~ "Endothelialcells",
+                                  # Others stay the same
+                                  TRUE ~ celltype
+    )) %>% 
+  mutate(annot_vizgen = factor(annot_vizgen, levels = names(color_palette_vizgen)),
+         dataset = factor(dataset, levels = c("sca002", "caw009"), labels = c("SCA002", "CAW009"))) %>% 
+  # summarise to get mean proportion per annot_vizgen
+  group_by(dataset, bin_size, annot_vizgen) %>%
+  summarise(mean_proportion = sum(mean_proportion))
+
+## PROPORTION BARPLOT - (D) ##
+p_mean_props <- ggplot(mean_props_vizgen %>% filter(bin_size == "008um"), aes(x=dataset, y=mean_proportion, fill=annot_vizgen)) +
+  geom_bar(stat="identity", position="dodge") +
+  theme_minimal(base_size=8) +
+  labs(x="Cell Type", y="Mean Proportion") +
+  scale_fill_manual(values=color_palette_vizgen, name="Cell type") +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.05)),
+                     breaks = seq(0, 1, 0.2)) +
+  guides(fill=guide_legend(nrow=1, title.position = "top")) +
+  labs(title = "Mean cell type proportions in 8\u03bcm VisiumHD data") +
+  theme(panel.grid.minor.x = element_blank(),
+        panel.grid.major.x = element_blank(),
+        panel.border = ggh4x::element_part_rect(side = "lb", fill = NA, linewidth = 0.25),
+        axis.ticks.x = element_blank(),
+        axis.ticks.y = element_line(linewidth=0.25),
+        axis.text.x = element_text(size=7),
+        axis.text.y = element_text(size=5),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size=6),
+        plot.title = element_text(size=7, face="bold"),
+        legend.position = "none")
+        # legend.key.size = unit(0.4, "cm"),
+        # legend.spacing.x = unit(0.4, "cm"),
+        # legend.key.spacing.x = unit(0.3, "cm"),
+        # legend.title = element_text(size=6, hjust=0.5, margin=margin(b=5)),
+        # legend.text = element_text(size=6, margin = margin(l=3)))
+
+design <- "####
+           ####
+           ##EE"
+
+p_mean_props + plot_layout(design = design)
+ggsave("visium_hd_liver_combined/plots/vizgen_grid_with_props_UMIs_d.pdf",
+       device = cairo_pdf,
+       width=8, height=6, dpi=300)
+
+mean_props_factor <- mean_props %>% 
+  mutate(dataset = factor(dataset, levels = c("sca002", "caw009"), labels = c("SCA002", "CAW009")),
+         celltype = factor(celltype, levels = rev(names(color_palette))),
+         bin_size = factor(bin_size, levels = c("008um", "016um", "032um"),
+                           labels = c("8\u03bcm", "16\u03bcm", "32\u03bcm")))
+
+## SUPPLEMENTARY - MEAN PROPS OF ALL CELL TYPES ##
+ggplot(mean_props_factor,
+       aes(y=celltype, x=mean_proportion, fill=celltype)) +
+  geom_bar(stat="identity") +
+  theme_bw(base_size=8) +
+  facet_grid(bin_size~dataset) +
+  labs(y="Cell Type", x="Mean Proportion") +
+  scale_fill_manual(values=color_palette, name="Cell type") +
+  scale_y_discrete(labels = celltype_labeller) +
+  scale_x_continuous(expand = expansion(mult = c(0, 0.05)),
+                     breaks = seq(0, 1, 0.2)) +
+  theme(panel.grid.major.y = element_blank(),
+        panel.border = ggh4x::element_part_rect(side = "lb", fill = NA, linewidth = 0.25),
+        strip.background.x = element_blank(),
+        strip.background.y = ggh4x::element_part_rect(side = "l", fill=NA, linewidth=0.5),
+        strip.text.y.right = element_text(angle=0),
+        axis.ticks.y = element_blank(),
+        axis.ticks.x = element_line(linewidth=0.25),
+        axis.text.x = element_text(size=6),
+        axis.text.y = element_text(size=5),
+        axis.title.y = element_blank(),
+        axis.title.x = element_text(size=6),
+        legend.position = "none")
+ggsave("visium_hd_liver_combined/plots/barplot_deconv_mean_props_all_celltypes.pdf",
+       device = cairo_pdf,
+       width=6, height=6, dpi=300)
+
 ## Calculate other statistics ##
 # Calculate mean per cell type, dataset, bin size
 deconv_props_rank %>% 
@@ -153,6 +267,7 @@ deconv_props_rank %>%
   summarise(total_spots = n_distinct(spot),
             total_hepatocytes = sum(celltype == "Hepatocytes")) %>% 
   mutate(percent_hepatocytes = total_hepatocytes / total_spots * 100)
+
 
 #### PLOT BARPLOTS ####
 deconv_props_rank <- readRDS(paste0("visium_hd_liver_combined/rds/deconv_props_all.rds"))

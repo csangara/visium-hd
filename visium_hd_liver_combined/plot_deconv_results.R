@@ -54,7 +54,8 @@ for (dataset_name in c("sca002", "caw009")){
     
     visium_obj <- readRDS(paste0(data_path, "Visium_HD_Liver", toupper(dataset), "_",
                                  bin_size_str, ".rds"))
-    ext <- "_annot_cd45"
+    
+    ext <- ifelse(bin_size == 8, "_annot_cd45", "_full")
     
     deconv_props <- read.table(paste0(proportions_path, "_", bin_size_str,
                                       "/proportions_rctd_Visium_HD_Liver", toupper(dataset), "_",
@@ -72,8 +73,8 @@ for (dataset_name in c("sca002", "caw009")){
     cat("Percentage of removed spots:", 
         round(length(removed_spots) / dim(visium_obj)[2] * 100, 2), "%\n")
     
-    # Go to next loop
-    next
+    # # Go to next loop
+    # next
     
     # Subset visium_obj to only include spots that were not removed
     visium_obj_subset <- visium_obj[, !(colnames(visium_obj) %in% removed_spots)]
@@ -105,9 +106,11 @@ for (dataset_name in c("sca002", "caw009")){
     }
   }
 }
+}
 
 ##### FIRST RUN: SAVE HIRES ROI OBJECTS #####
 
+if (first_run){
 bin_size <- 16
 bin_size_str <- sprintf("%03dum", bin_size)
 
@@ -175,7 +178,8 @@ for (dataset_name in c("sca002", "caw009")){
                         "spatialdimplot_ROIs", toupper(dataset), "_",
                  bin_size_str, ".rds"))
 }
-}  
+}
+
 ##### COMBINE PLOTS ####
 
 dataset_name <- "caw009"
@@ -264,9 +268,9 @@ for (dataset_name in c("sca002", "caw009")){
       p_roi_border +
       plot_layout(design = design, guides='collect')
     
-    ggsave(paste0(plot_path, "featureplots_ROI", toupper(dataset), "_",
-                  bin_size_str, "_roi",  roi_i, ".png"),
-           p_featureplots, width = 8, height = 11, bg = "white")
+    # ggsave(paste0(plot_path, "featureplots_ROI", toupper(dataset), "_",
+    #               bin_size_str, "_roi",  roi_i, ".png"),
+    #        p_featureplots, width = 8, height = 11, bg = "white")
   }
   
   
@@ -282,7 +286,7 @@ for (dataset_name in c("sca002", "caw009")){
         square_size <- visium_obj_roi@images[[paste0("slice1.", bin_size_str)]]@scale.factors$spot
         
         deconv_props_roi <- readRDS(paste0("visium_hd_liver_combined/rds/", "liver", toupper(dataset), "_",
-                                           bin_size_str, "_ROI", roi_names[i], "_deconv_props.rds"))
+                                           bin_size_str, "_ROI", roi_names[i], "_deconv_props_doublet.rds"))
         
         deconv_props_roi %>% 
           rownames_to_column("spot") %>%
@@ -320,21 +324,18 @@ for (dataset_name in c("sca002", "caw009")){
   
   # Create barplot in squares
   deconv_props_df_barplot <- deconv_props_df %>% 
-    filter(n_celltypes == 2) %>% 
+    #filter(n_celltypes == 2) %>% 
     group_by(spot) %>% arrange(spot, desc(proportion)) %>% 
     mutate(rank = row_number(),
-           group = paste0(spot, "_", rank)) %>% 
-    mutate(x1 = case_when(rank == 1 ~ y - (square_size / 2) + (proportion*square_size),
-                          rank == 2 ~ y + (square_size / 2) - (proportion*square_size)),
+           group = paste0(spot, "_", rank),
+           cum_prop = cumsum(proportion)) %>% 
+    mutate(x1 = y - (square_size/2) + (cum_prop*square_size),
            y1 = x - square_size / 2,
-           x2 = case_when(rank == 1 ~ y - (square_size / 2) + (proportion*square_size),
-                          rank == 2 ~ y + (square_size / 2) - (proportion*square_size)),
+           x2 = y - (square_size/2) + (cum_prop*square_size),
            y2 = x + square_size / 2,
-           x3 = case_when(rank == 1 ~ y - square_size / 2,
-                          rank == 2 ~ y + square_size / 2),
+           x3 = y - (square_size/2) + ((cum_prop - proportion)*square_size),
            y3 = x + square_size / 2,
-           x4 = case_when(rank == 1 ~ y - square_size / 2,
-                          rank == 2 ~ y + square_size / 2),
+           x4 = y - (square_size/2) + ((cum_prop - proportion)*square_size),
            y4 = x - square_size / 2
     ) %>% 
     rename(coord_x = x, coord_y = y) %>%

@@ -94,3 +94,13 @@ SpatialFeaturePlot(visium_obj, "Hal", slot="counts",
                    stroke=NA, image.alpha=0)
 ggsave(paste0(plot_path, "spatialfeatureplot_Hal_", bin_size_str, ".png"),
        width = 10, height = 7, bg = "white")
+
+SpatialFeaturePlot(visium_obj, "Epcam", slot="counts",
+                   stroke=NA, image.alpha=0)
+ggsave(paste0(plot_path, "spatialfeatureplot_Epcam_", bin_size_str, ".png"),
+       width = 10, height = 7, bg = "white")
+
+SpatialFeaturePlot(visium_obj, "Spp1", slot="counts",
+                   stroke=NA, image.alpha=0)
+ggsave(paste0(plot_path, "spatialfeatureplot_Spp1_", bin_size_str, ".png"),
+       width = 10, height = 7, bg = "white")

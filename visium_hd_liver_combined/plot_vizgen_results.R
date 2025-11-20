@@ -1,63 +1,36 @@
 library(Seurat)
 library(tidyverse)
 library(patchwork)
+library(spdep)
+library(sf)
 
 color_palette <- c("Hepatocytes" = "#B4B5B5FF",
-                   "CentralVeinEndothelialcells" = "#FED8B1FF",
-                   "LSECs" = "#FBB05FFF",
-                   "PortalVeinEndothelialcells" = "#CC7722FF",
-                   "LymphaticEndothelialcells" = "#8F4716FF",
+                   "Endothelialcells" = "#dca754",
                    "Cholangiocytes" = "#C61B84FF",
-                   "HsPCs" = "#F19FC3FF",
-                   "Stellatecells" = "#A31A2AFF",
-                   "Mesothelialcells" = "#D0110BFF",
-                   "Fibroblasts" = "#E45466FF",
-                   "CapsularFibroblasts" = "#D46F6CFF",
+                   "Stromalcells" = "#79151e",
                    "Kupffercells" = "#5DA6DBFF",
-                   "MonocytesMonocytederivedcells" = "#a3daf3",
-                   "cDC1s" = "#893A86FF",
-                   "cDC2s" = "#893A86FF",
-                   "pDCs" = "#893A86FF",
-                   "MigcDCs" = "#893A86FF",
+                   "Otherimmunecells" = "#893A86FF",
                    "Bcells" = "#9C7EBAFF",
-                   "NKcells" = "#4A6E34FF",
-                   "Tcells" = "#3AB04AFF",
-                   "ILC1s" = "#A3D7BAFF",
-                   "Basophils" = "#191919",
-                   "Neutrophils" = "#727272")
+                   "Unknown" = "#191919",
+                   "CentralVeinEndothelialcells" = "#FED8B1FF",
+                   "PortalVeinEndothelialcells" = "#CC7722FF",
+                   "Stellatecells" = "#A31A2AFF",
+                   "Fibroblasts" = "#E45466FF")
 bin_sizes <- c(8,16,32)
 bin_size_strs <- sprintf("%03dum", bin_sizes)
 bin_size <- 8
 
-vizgen <- read.csv("visium_hd_liver_combined/vizgen/vizgen_grid_8um_celltype_proportions.csv")
-
-
-vizgen_df <- vizgen %>%
-  pivot_longer(cols=-grid_id, names_to="celltype", values_to="proportion")
-
-vizgen_df_ranked <- vizgen %>%
-  pivot_longer(cols=-grid_id, names_to="celltype", values_to="proportion") %>% 
-  filter(proportion > 0) %>% 
-  group_by(grid_id) %>% 
-  # Only get top two
-  slice_max(order_by=proportion, n=2) %>%
-  mutate(rank = data.table::frankv(proportion, order=-1),
-         doublet_type = case_when(n() == 1 ~ "singlet",
-                                  n() == 2 ~ "doublet"))
-
-# Complete the dataframe
-vizgen_df_ranked_complete <- vizgen_df_ranked %>% 
-  # Recalculate proportions to become 1
-  group_by(grid_id) %>%
-  mutate(proportion = proportion / sum(proportion)) %>%
-  ungroup %>% 
-  tidyr::complete(grid_id, celltype, fill = list(proportion = 0, rank=NA, doublet_type=NA))
-
-# Cell types present in each spot
+#########################
+# How many cell types present in each spot?
 rowSums(vizgen[,-1] > 0) %>% table
 
-vizgen_summ <- vizgen_df_ranked_complete %>% 
-  group_by(celltype) %>% 
+# How many spots are hepatocytes present in?
+(vizgen_df %>% filter(celltype == "Hepatocytes", proportion > 0) %>% nrow())/
+  (length(unique(vizgen_df$grid_id)))
+
+vizgen_summ <- vizgen_df %>%
+  tidyr::complete(grid_id, celltype, fill = list(proportion = 0, rank=NA, doublet_type=NA)) %>% 
+  group_by(celltype, bin_size) %>% 
   summarise(mean_prop=mean(proportion))
 
 # Plot barplot
@@ -66,25 +39,25 @@ ggplot(vizgen_summ, aes(x=reorder(celltype, -mean_prop), y=mean_prop, fill=cellt
   theme_minimal() +
   theme(axis.text.x=element_text(angle=45, hjust=1)) +
   labs(x="Cell Type", y="Mean Proportion", title="Mean Cell Type Proportions in Vizgen Data") +
-  scale_fill_brewer(palette="Set3") +
+  scale_fill_manual(values=color_palette) +
   guides(fill=FALSE)
 
 # Plot barplot of total times a cell type is the top cell type
-ggplot(vizgen_df %>% filter(rank == 1), aes(x=celltype, fill=celltype)) +
+ggplot(vizgen_df_ranked %>% filter(rank == 1), aes(x=celltype, fill=celltype)) +
   geom_bar() +
   theme_minimal() +
   theme(axis.text.x=element_text(angle=45, hjust=1)) +
   labs(x="Cell Type", y="Count", title="Top Cell Types in Vizgen Data") +
-  scale_fill_brewer(palette="Set3") +
+  scale_fill_manual(values=color_palette) +
   guides(fill=FALSE)
 
 # Plot barplot total times a cell type is the second cell type
-ggplot(vizgen_df %>% filter(rank == 2), aes(x=celltype, fill=celltype)) +
+ggplot(vizgen_df_ranked %>% filter(rank == 2), aes(x=celltype, fill=celltype)) +
   geom_bar() +
   theme_minimal() +
   theme(axis.text.x=element_text(angle=45, hjust=1)) +
   labs(x="Cell Type", y="Count", title="Second Cell Types in Vizgen Data") +
-  scale_fill_brewer(palette="Set3") +
+  scale_fill_manual(values=color_palette) +
   guides(fill=FALSE)
 
 
@@ -99,137 +72,70 @@ ggplot(vizgen_df_ranked %>% filter(proportion > 0), aes(x=reorder(celltype, -pro
 
 vizgen_summ
 
-# Plot the squares
-centroids <- read.csv("visium_hd_liver_combined/vizgen/vizgen_grid8um_centroids.csv")
-square_size <- bin_size*1000/108
 
-# merge with coordinates
-vizgen_df_coords <- vizgen_df_ranked %>% ungroup() %>% 
-  left_join(centroids, by = "grid_id") %>% 
-  rename(x = centroid_x, y = centroid_y) %>% 
-  mutate(n_celltypes = n(), .by = "grid_id",
-         square_size = square_size,
-         bin_size = bin_size)
 
-roi <- c(10000,15000,8000,12000)
+#### Compare proportion based on area vs transcripts ####
 
-vizgen_df_coords <- vizgen_df_coords %>% 
-  filter(x >= roi[1], x <= roi[2],
-         y >= roi[3], y <= roi[4])
+for (bin_size in bin_sizes){
+  
+  vizgen_transcript <- read.csv(paste0("visium_hd_liver_combined/vizgen/vizgen_grid_", bin_size, "um_celltype_proportions.csv"), row.names=1)
+  vizgen_area <- read.csv(paste0("visium_hd_liver_combined/vizgen/vizgen_grid_", bin_size, "um_celltype_proportions_by_area.csv"), row.names=1)
+  
+  stopifnot("all row names must be the same" = all(rownames(vizgen_transcript) == rownames(vizgen_area)))
+  stopifnot("all col names must be the same" = all(colnames(vizgen_transcript) == colnames(vizgen_area)))
+  
+  mean_cor <- mean(diag(cor(as.matrix(vizgen_transcript), as.matrix(vizgen_area), method="pearson")))
+  print(paste0("Mean correlation at ", bin_size, "um: ", round(mean_cor, 3)))
+}
 
-vizgen_df_square <- vizgen_df_coords %>%
-  filter(n_celltypes == 1) %>% 
-  mutate(group = as.character(grid_id)) %>% 
-  # Draw squares for each
-  mutate(x1 = y - square_size / 2,
-         y1 = x - square_size / 2,
-         x2 = y + square_size / 2,
-         y2 = x - square_size / 2,
-         x3 = y + square_size / 2,
-         y3 = x + square_size / 2,
-         x4 = y - square_size / 2,
-         y4 = x + square_size / 2) %>%
-  rename(coord_x = x, coord_y = y) %>% 
-  pivot_longer(cols = c(x1, y1, x2, y2, x3, y3, x4, y4),
-               names_to = c(".value", "corner"),
-               names_pattern = "(x|y)([1-4])")
+#### PLOT DISTRIBUTION OF PROPORTION ####
 
-# Create barplot in squares
-vizgen_df_barplot <- vizgen_df_coords %>% 
-  filter(n_celltypes == 2) %>% 
-  group_by(grid_id) %>% arrange(grid_id, desc(proportion)) %>% 
-  mutate(rank = row_number(),
-         group = paste0(grid_id, "_", rank)) %>% 
-  mutate(x1 = case_when(rank == 1 ~ y - (square_size / 2) + (proportion*square_size),
-                        rank == 2 ~ y + (square_size / 2) - (proportion*square_size)),
-         y1 = x - square_size / 2,
-         x2 = case_when(rank == 1 ~ y - (square_size / 2) + (proportion*square_size),
-                        rank == 2 ~ y + (square_size / 2) - (proportion*square_size)),
-         y2 = x + square_size / 2,
-         x3 = case_when(rank == 1 ~ y - square_size / 2,
-                        rank == 2 ~ y + square_size / 2),
-         y3 = x + square_size / 2,
-         x4 = case_when(rank == 1 ~ y - square_size / 2,
-                        rank == 2 ~ y + square_size / 2),
-         y4 = x - square_size / 2
-  ) %>% 
-  rename(coord_x = x, coord_y = y) %>%
-  pivot_longer(cols = c(x1, y1, x2, y2, x3, y3, x4, y4),
-               names_to = c(".value", "corner"),
-               names_pattern = "(x|y)([1-4])")
+ggplot(vizgen, aes(x=Endothelialcells)) +
+  geom_histogram(binwidth=0.05)
 
-vizgen_df_shapes <- bind_rows(vizgen_df_square, vizgen_df_barplot)
-  #mutate(celltype = factor(celltype, levels = celltype_order))
+ggplot(deconv_props, aes(x=Kupffercells)) +
+  geom_histogram(binwidth=0.05)
 
-ggplot(vizgen_df_shapes, aes(x = x, y = y)) +
-  geom_polygon(aes(fill = celltype, group = group), show.legend = TRUE) +
-  # White border
-  geom_tile(data = vizgen_df_coords %>% distinct(x, y),
-            aes(x = y, y = x), height = square_size, width = square_size,
-            fill = NA, color = "white", inherit.aes = FALSE) +
-  #scale_fill_manual(values = color_palette) +
-  theme_void() +
-  scale_y_reverse() +
-  coord_fixed() +
-  #ggtitle(paste0(bs, "\u00b5m")) +
-  guides(fill = guide_legend(ncol=1)) +
-  theme(legend.title = element_blank(),
-        legend.text = element_text(size=6),
-        legend.key.size = unit(0.5, "cm"),
-        plot.title = element_text(hjust = 0.5))
 
-# Try with another file
-vizgen_area <- read.csv("visium_hd_liver_combined/vizgen/vizgen_grid_8um_celltype_proportions_by_area.csv")
+#### MORAN'S I FOR CELL TYPES ####
+binarize <- FALSE
 
-vizgen_area_df <- vizgen_area %>%
-  pivot_longer(cols=-grid_id, names_to="celltype", values_to="proportion")
+vizgen <- read.csv(paste0("visium_hd_liver_combined/vizgen/vizgen_grid_",
+                          bin_size, "um_celltype_proportions.csv")) %>% 
+  # replace . in colname with nothing
+  rename_with(~ gsub("\\.", "", .x)) %>% 
+  # rename Kuppfercells to Kupffercells
+  rename(Kupffercells = Kuppfercells)
 
-vizgen_area_summ <- vizgen_area_df %>%
-  group_by(celltype) %>% 
-  summarise(mean_prop=mean(proportion))
-
-# Plot barplot
-ggplot(vizgen_area_summ, aes(x=reorder(celltype, -mean_prop), y=mean_prop, fill=celltype)) +
-  geom_bar(stat="identity") +
-  theme_minimal() +
-  theme(axis.text.x=element_text(angle=45, hjust=1)) +
-  labs(x="Cell Type", y="Mean Proportion", title="Mean Cell Type Proportions in Vizgen Data by Area") +
-  scale_fill_brewer(palette="Set3") +
-  guides(fill=FALSE)
-
-# Plot boxplot
-ggplot(vizgen_area_df %>% filter(proportion > 0), aes(x=reorder(celltype, -proportion, FUN=median), y=proportion, fill=celltype)) +
-  geom_boxplot() +
-  theme_minimal() +
-  theme(axis.text.x=element_text(angle=45, hjust=1)) +
-  labs(x="Cell Type", y="Proportion", title="Cell Type Proportions in Vizgen Data by Area") +
-  scale_fill_brewer(palette="Set3") +
-  guides(fill=FALSE)
-
-vizgen_area_summ
-vizgen_summ
-
-# Calculate moran's I on KCs
-vizgen_KCs <- vizgen[, c("grid_id", "Kuppfer.cells")]
-  #inner_join(centroids, by="grid_id")
-# KC_dists <- as.matrix(dist(cbind(vizgen_KCs$centroid_x, vizgen_KCs$centroid_y)))
-# KC_dists.inv <- 1/KC_dists
-# diag(KC_dists.inv) <- 0
-# KC_dists.inv[1:5, 1:5]
-# ape::Moran.I(vizgen_KCs$Kuppfer.cells, KC_dists.inv)
-
-library(spdep)
-library(sf)
 grid_shp <- read_sf("visium_hd_liver_combined/vizgen/grid_8um.shp") %>% 
   mutate(FID = FID + 1) %>% 
-  filter(FID %in% vizgen_KCs$grid_id)
+  filter(FID %in% vizgen$grid_id)
 grid_nb <- poly2nb(grid_shp, queen=TRUE, snap=1)
 lw <- nb2listw(grid_nb, style="W", zero.policy=TRUE)
 
-I <- moran(vizgen_KCs$Kuppfer.cells, lw, length(grid_nb), Szero(lw))[1]
-I #0.32 for 8um
-moran.test(vizgen_KCs$Kuppfer.cells,lw, alternative="greater") #p-value < 0.001
+# Get Moran's I for all cell types
+vizgen_moran_ct_df <- lapply(names(color_palette), function(ct) {
+  
+  if (binarize) {
+    vizgen_ct <- ifelse(vizgen[, ct] > 0, 1, 0)
+  } else {
+    vizgen_ct <- vizgen[, ct]
+  }
+  
+  res <- moran.test(vizgen_ct, lw, alternative="greater") #p-value < 0.001
+  
+  stopifnot("all row names must be the same" = all(grid_shp$FID == vizgen$grid_id))
+  
+  data.frame(morans_I = res$estimate["Moran I statistic"], 
+             expected_I = res$estimate["Expectation"], 
+             variance_I = res$estimate["Variance"], 
+             pvalue=res$p.value, dataset="Vizgen", celltype=ct
+  )
+}) %>% bind_rows() %>% `rownames<-`(NULL)
 
+vishd_shapes <- read_sf("visium_hd_liver_combined/rds/shapes/CAW009_square_008um.shp")
+vishd_location <- read.csv("visium_hd_liver_combined/rds/shapes/CAW009_square_008um_locationid.csv", row.names=1) %>% 
+  rownames_to_column("spot")
 
 deconv_props_rank <- readRDS(paste0("visium_hd_liver_combined/rds/deconv_props_all.rds"))
 
@@ -238,86 +144,487 @@ deconv_props <- deconv_props_rank %>%
   ungroup() %>% 
   select(spot, celltype, proportion) %>% 
   tidyr::complete(spot, celltype, fill = list(proportion = 0))
+
+vishd_shapes_sub <- vishd_shapes %>%
+  inner_join(vishd_location %>% select(spot, location_id),
+             by=c("location_i"="location_id")) %>% 
+  filter(spot %in% unique(deconv_props$spot))
+grid_vishd_nb <- poly2nb(vishd_shapes_sub, queen=TRUE, snap=0.1)
+lw_vishd <- nb2listw(grid_vishd_nb, style="W", zero.policy=TRUE)
+
+vishd_celltypes_oi <- c("Hepatocytes", "Cholangiocytes", "Bcells", "CentralVeinEndothelialcells",
+                        "Kupffercells", "Fibroblasts", "PortalVeinEndothelialcells", "Stellatecells", "Tcells")
+
+# Get Moran's I for all cell types
+vishd_moran_ct_df <- lapply(vishd_celltypes_oi, function(ct) {
   
-deconv_props_KC <- deconv_props %>%
-  filter(celltype == "Kupffercells")
+  deconv_props_ct <- deconv_props %>%
+    filter(celltype == ct) %>% 
+    # Arrange according to vishd_shapes_sub$spot
+    arrange(match(spot, vishd_shapes_sub$spot))
+  
+  if (binarize) {
+    deconv_props_ct$proportion <- ifelse(deconv_props_ct$proportion > 0, 1, 0)
+  }
+  
+  stopifnot("all row names must be the same" = all(vishd_shapes_sub$spot == deconv_props_ct$spot))
+  
+  res <- moran.test(deconv_props_ct$proportion, lw_vishd, alternative="greater") #p-value < 0.001
+  
+  data.frame(morans_I = res$estimate["Moran I statistic"], 
+             expected_I = res$estimate["Expectation"], 
+             variance_I = res$estimate["Variance"], 
+             pvalue=res$p.value, dataset="VisiumHD", celltype=ct)
 
-dataset <- "_caw009"
-bin_size_str <- "008um"
-bin_size <- 8
+}) %>% bind_rows() %>% `rownames<-`(NULL)
 
-#visium_obj <- readRDS("data/Visium_HD_Liver_CAW009/Visium_HD_Liver_CAW009_008um.rds")
-#square_size <- visium_obj@images[[paste0("slice1.", bin_size_str)]]@scale.factors$spot
+# Combine dataframes
+moran_ct_df <- rbind(vishd_moran_ct_df, vizgen_moran_ct_df)
+
+# saveRDS(moran_ct_df, paste0("visium_hd_liver_combined/vizgen/moransI_celltypes",
+#                             ifelse(binarize, "_binarized", ""), ".rds"))
+
+moran_ct_df_all <- lapply(c(TRUE, FALSE), function(b){
+  readRDS(paste0("visium_hd_liver_combined/vizgen/moransI_celltypes",
+                               ifelse(b, "_binarized", ""), ".rds")) %>% 
+    mutate(binarized = b)
+}) %>% bind_rows()
+
+moran_ct_df_sub <- moran_ct_df_all %>% 
+  # remove "Unknown", "Tcells", and "Otherimmunecells"
+  filter(!celltype %in% c("Unknown", "Tcells", "Otherimmunecells")) %>%
+  # Group 'fibroblasts', "Stellate cells", and "Stromal cells" together, keep the rest the same
+  mutate(grouped_celltype = case_when(
+    celltype %in% c("Fibroblasts", "Stellatecells", "Stromalcells") ~ "Fibro/Stromal/SC",
+    celltype %in% c("Endothelialcells", "CentralVeinEndothelialcells", "PortalVeinEndothelialcells") ~ "Endothelialcells",
+    TRUE ~ celltype
+  )) %>% 
+  mutate(grouped_celltype = factor(grouped_celltype, 
+                                   levels=c("Hepatocytes", "Cholangiocytes", "Bcells", "Endothelialcells",
+                                            "Kupffercells", "Fibro/Stromal/SC")),
+         celltype = factor(celltype, levels=c("Hepatocytes", "Cholangiocytes", "Bcells", "CentralVeinEndothelialcells",
+                                              "PortalVeinEndothelialcells", "Endothelialcells", "Kupffercells",
+                                              "Fibroblasts", "Stellatecells", "Stromalcells"))) %>% 
+  # Jitter y values only when the grouped_celltype contains multiple unique celltypes
+  group_by(grouped_celltype) %>%
+  mutate(y_axis = case_when(
+    n_distinct(celltype) == 1 ~ as.numeric(grouped_celltype),
+    TRUE ~ as.numeric(grouped_celltype) + seq(-0.2, 0.2, length.out=n_distinct(celltype)))
+           )
+
+ggplot(moran_ct_df_sub,
+       aes(y=y_axis, x=morans_I, fill=celltype, group=grouped_celltype, shape=dataset)) +
+  geom_point(size=2.5, stroke=0.3) +
+  theme_minimal(base_size=8) +
+  labs(x="Moran's I", title=paste0("Spatial Autocorrelation of Cell types"),
+       shape="Dataset") +
+  scale_fill_manual(values=color_palette, guide="none") +
+  # scale shape: visiumhd = square, vizgen = triangle
+  scale_shape_manual(values=c("VisiumHD"=22, "Vizgen"=21),
+                     labels=c("Vizgen"="Gridded Vizgen")) +
+  scale_y_continuous(breaks=sort(unique(moran_ct_df_sub$y_axis)),
+                     labels=levels(moran_ct_df_sub$celltype),
+                     # reverse
+                     transform = "reverse") +
+  scale_x_continuous(limits=c(0, 0.8)) +
+  facet_wrap(~binarized, ncol=1,
+             labeller = as_labeller(c(`TRUE` = "Binarized Proportions", `FALSE` = "Proportions"))
+             ) +
+  theme(legend.position="bottom",
+        legend.title = element_text(size=6),
+        legend.text = element_text(size=6, margin=margin(l=0)),
+        legend.key.spacing.x = unit(0.3, "cm"),
+        panel.grid.major.y = element_blank(),
+        panel.grid.minor.y = element_blank(),
+        strip.text = element_text(size=8, face="bold", hjust=0),
+        panel.spacing.y = unit(0.5, "cm"),
+        panel.border = ggh4x::element_part_rect(side="lb", fill=NA, linewidth=0.5),
+        plot.title = element_text(hjust=0, size=8, face="bold"),
+        axis.title.y = element_blank(),
+        axis.title.x = element_text(size=7),
+        axis.ticks = element_line(color="black"))
+
+ggsave(paste0("visium_hd_liver_combined/plots/moransI_celltypes_combined.pdf"),
+       width=5, height=7)
+
+#### TRY OUT LOCAL STATISTICS ####
+ct <- "Kupffercells"
+
+vizgen <- read.csv(paste0("visium_hd_liver_combined/vizgen/vizgen_grid_",
+                          bin_size, "um_celltype_proportions.csv")) %>% 
+  # replace . in colname with nothing
+  rename_with(~ gsub("\\.", "", .x)) %>% 
+  # rename Kuppfercells to Kupffercells
+  rename(Kupffercells = Kuppfercells)
+
+grid_shp <- read_sf("visium_hd_liver_combined/vizgen/grid_8um.shp") %>% 
+  mutate(FID = FID + 1) %>% 
+  filter(FID %in% vizgen$grid_id)
+grid_nb <- poly2nb(grid_shp, queen=TRUE, snap=1)
+lw <- nb2listw(grid_nb, style="W", zero.policy=TRUE)
+
+vizgen_ct <- vizgen[, ct]
+
+vizgen_localI <- localmoran(vizgen_ct, lw, alternative="greater")
+hist(p.adjust(reslocal[,5], method="bonferroni"))
+
+# Test out permutations + hotspot
+vizgen_localIperm <- localmoran_perm(vizgen_ct, lw)
+vizgen_Ih <- hotspot(vizgen_localIperm, Prname="Pr(z != E(Ii)) Sim", cutoff=0.05, p.adjust="none")
+table(addNA(vizgen_Ih))
+
+
+vizgen_localCperm <- localC_perm(vizgen_ct, lw)
+vizgen_Ch <- hotspot(vizgen_localCperm, Prname="Pr(z != E(Ci)) Sim", cutoff=0.05, p.adjust="none")
+table(addNA(vizgen_Ch))
+
+vizgen_localGperm <- localG_perm(vizgen_ct, lw)
+vizgen_Gh <- hotspot(vizgen_localGperm, Prname="Pr(z != E(Gi)) Sim", cutoff=0.05, p.adjust="none")
+table(addNA(vizgen_Gh)) %>% prop.table
 
 vishd_shapes <- read_sf("visium_hd_liver_combined/rds/shapes/CAW009_square_008um.shp")
 vishd_location <- read.csv("visium_hd_liver_combined/rds/shapes/CAW009_square_008um_locationid.csv", row.names=1) %>% 
   rownames_to_column("spot")
-
+deconv_props_rank <- readRDS(paste0("visium_hd_liver_combined/rds/deconv_props_all.rds"))
+deconv_props <- deconv_props_rank %>% 
+  filter(dataset == "caw009", bin_size == "008um") %>% 
+  ungroup() %>% 
+  select(spot, celltype, proportion) %>% 
+  tidyr::complete(spot, celltype, fill = list(proportion = 0))
 vishd_shapes_sub <- vishd_shapes %>%
   inner_join(vishd_location %>% select(spot, location_id),
-            by=c("location_i"="location_id")) %>% 
-  filter(spot %in% deconv_props_KC$spot)
-
-
+             by=c("location_i"="location_id")) %>% 
+  filter(spot %in% unique(deconv_props$spot))
 grid_vishd_nb <- poly2nb(vishd_shapes_sub, queen=TRUE, snap=0.1)
 lw_vishd <- nb2listw(grid_vishd_nb, style="W", zero.policy=TRUE)
 
-vishd_I <- moran(deconv_props_KC$proportion, lw_vishd, length(grid_vishd_nb), Szero(lw_vishd))[1]
-vishd_I #0 for vishd
-moran.test(deconv_props_KC$proportion,lw_vishd, alternative="greater") #p-value = 0.53
+deconv_props_ct <- deconv_props %>%
+  filter(celltype == ct) %>% arrange(match(spot, vishd_shapes_sub$spot)) %>% 
+  pull(proportion)
+
+vishd_localI <- localmoran(deconv_props_ct, lw_vishd, alternative="greater")
+hist(p.adjust(vishd_localI[,5], method="bonferroni"))
+
+vishd_localIperm <- localmoran_perm(deconv_props_ct, lw_vishd)
+vishd_Ih <- hotspot(vishd_localIperm, Prname="Pr(z != E(Ii)) Sim", cutoff=0.05, p.adjust="none")
+table(addNA(vishd_Ih))
+
+vishd_localCperm <- localC_perm(deconv_props_ct, lw_vishd)
+vishd_Ch <- hotspot(vishd_localCperm, Prname="Pr(z != E(Ci)) Sim", cutoff=0.05, p.adjust="none")
+table(addNA(vishd_Ch))
+
+vishd_localGperm <- localG_perm(deconv_props_ct, lw_vishd)
+vishd_Gh <- hotspot(vishd_localGperm, Prname="Pr(z != E(Gi)) Sim", cutoff=0.05, p.adjust="none")
+table(addNA(vishd_Gh))
+
+# In the end, they're all kinda crap :(
+
+ct_stats <- list(vizgen_I=vizgen_Ih, vizgen_C=vizgen_Ch, vizgen_G=vizgen_Gh,
+     vishd_I=vishd_Ih, vishd_C=vishd_Ch, vishd_G=vishd_Gh)
+
+# saveRDS(ct_stats, file="visium_hd_liver_combined/vizgen/local_stats_", ct, ".rds")
+ct_stats <- readRDS(file="visium_hd_liver_combined/vizgen/local_stats_Kupffercells.rds")
+
+for (i in 1:length(ct_stats)){
+  print(names(ct_stats)[i])
+  
+  # Get letter for the type of stat (fifth letter fromt he end)
+  stat_letter <- substr(names(ct_stats)[i], nchar(names(ct_stats)[i])-4, nchar(names(ct_stats)[i])-4)
+  
+  h <- hotspot(ct_stats[[i]], Prname=paste0("Pr(z != E(", stat_letter, "i)) Sim"), cutoff=0.05, p.adjust="none")
+  print(table(addNA(h)))
+}
+
+# "vizgen_localIperm"
+# Low-Low  Low-High High-High      <NA> 
+#   1      6826      9890    221870 
+# 
+# "vizgen_localCperm"
+# High-High        Low-Low Other Positive       Negative           <NA> 
+#   8721              2           5307             21         224536 
+#
+# "vizgen_localGperm"
+# Low   High   <NA> 
+#   6822   9868 221897 
+#
+# "vishd_localIperm"
+# Low-Low  High-Low  Low-High High-High      <NA> 
+#   174        14     10216     30315    394012 
+# 
+# "vishd_localCperm"
+# High-High        Low-Low Other Positive       Negative           <NA> 
+#   32322            298           6918           2109         393084 
+#
+# "vishd_localGperm"
+# Low   High   <NA> 
+#   10526  30496 393709 
 
 
-#### Cells per grid
+#### Morans I for select genes ####
 
-ncells_df <- lapply(bin_sizes, function(bin_size) {
+# Vizgen grid and neighbor list
+grid_shp <- read_sf("visium_hd_liver_combined/vizgen/grid_8um.shp") %>% 
+  mutate(FID = FID + 1)
+grid_nb <- poly2nb(grid_shp, queen=TRUE, snap=1)
+lw <- nb2listw(grid_nb, style="W", zero.policy=TRUE)
 
-  read.csv(paste0("visium_hd_liver_combined/vizgen/intersection_result_", bin_size, "um.csv")) %>% 
-    group_by(grid_id) %>% 
-    summarise(n_cells = n(),
-              n_celltypes = n_distinct(annotation_own_score_genes)) %>% 
-    mutate(bin_size = bin_size)
+# VisiumHD grid and neighbor list
+visium_obj <- readRDS("data/Visium_HD_Liver_CAW009/Visium_HD_Liver_CAW009_008um.rds")
+vishd_shapes <- read_sf("visium_hd_liver_combined/rds/shapes/CAW009_square_008um.shp")
+vishd_location <- read.csv("visium_hd_liver_combined/rds/shapes/CAW009_square_008um_locationid.csv", row.names=1) %>% 
+  rownames_to_column("spot")
+vishd_shapes_sub <- vishd_shapes %>%
+  inner_join(vishd_location %>% select(spot, location_id),
+             by=c("location_i"="location_id"))
+grid_vishd_nb <- poly2nb(vishd_shapes_sub, queen=TRUE, snap=0.1)
+lw_vishd <- nb2listw(grid_vishd_nb, style="W", zero.policy=TRUE)
+
+# Do analysis
+genes <- c("Sdc3", "Csf1r", "Kcnj16", "Clec4f")
+gene <- "Sdc3"
+morans_df <- lapply(genes, function(gene){
+  
+  if (gene != "Clec4f"){
+    vizgen_gene <- read.csv(paste0("visium_hd_liver_combined/vizgen/vizgen_grid_",
+                                   bin_size, "um_", gene, "_counts.csv"))
+    
+    vizgen_gene_filled <- vizgen_gene %>% right_join(grid_shp %>% st_drop_geometry() %>%
+                                                       select(FID), by=c("index_right"="FID")) %>% 
+      # Fill na with 0
+      mutate(X0 = ifelse(is.na(X0), 0, X0))
+    
+    res_vizgen <- moran.test(vizgen_gene_filled$X0,lw, alternative="greater")
+  } else {
+    # Clec4f not in vizgen data
+    res_vizgen <- list(estimate=c("Moran I statistic"=NA, "Expectation"=NA, "Variance"=NA), p.value=NA)
+  }
+  
+  vishd_gene <- as.data.frame(GetAssayData(visium_obj, layer="counts")[gene, ]) %>%
+    `colnames<-`(c("count")) %>% rownames_to_column("spot")
+  
+  # Check spot names match
+  stopifnot("all row names must be the same" = all(vishd_shapes_sub$spot == vishd_gene$spot))
+  
+  res_vishd <- moran.test(vishd_gene$count,lw_vishd, alternative="greater") 
+  
+  data.frame(rbind(c(res_vishd$estimate, pvalue=res_vishd$p.value),
+        c(res_vizgen$estimate, pvalue=res_vizgen$p.value)),
+        dataset=c("VisiumHD", "Vizgen"),
+        gene=gene)
 }) %>% bind_rows()
 
-ncells_df_long <- ncells_df %>%
-  pivot_longer(cols=c(n_cells, n_celltypes), names_to="metric", values_to="value") 
+# saveRDS(morans_df, file="visium_hd_liver_combined/vizgen/moransI_KC_genes.rds")
+morans_df <- readRDS(file="visium_hd_liver_combined/vizgen/moransI_KC_genes.rds")
 
-# Plot of number of cells and number of cell types per bin size
-ggplot(ncells_df_long, aes(x=value)) +
-  geom_histogram(binwidth=1) +
-  ggh4x::facet_grid2(metric~bin_size, scales="free") 
 
-# Get the proportions plot
+# Order gene by ascending difference between datasets
+gene_order <- morans_df %>% group_by(gene) %>% 
+  summarise(diff = abs(diff(Moran.I.statistic))) %>% 
+  arrange(diff) %>% pull(gene)
 
-vizgen <- read.csv("visium_hd_liver_combined/vizgen/vizgen_grid_8um_celltype_proportions.csv")
+ggplot(morans_df %>% mutate(gene=factor(gene, levels=gene_order)),
+       aes(y=gene, x=Moran.I.statistic, fill=dataset)) +
+  geom_point(size=2, shape=21, stroke=0.3) +
+  theme_minimal(base_size=7) +
+  labs(x="Moran's I", title="Moran's I for KC Marker Genes", fill="Dataset") +
+  scale_fill_manual(values=c("Vizgen"="#E69F00", "VisiumHD"="#56B4E9"),
+                     labels=c("Vizgen"="Gridded Vizgen"))+
+  theme(legend.title = element_text(size=6),
+        legend.text = element_text(size=6, margin=margin(l=0)),
+        legend.key.spacing.x = unit(0.3, "cm"),
+        legend.position = "bottom",
+        panel.grid.major.y = element_blank(),
+        panel.grid.minor.y = element_blank(),
+        panel.grid.minor.x = element_blank(),
+        axis.title.y = element_blank(),
+        axis.line = element_line(color="black"),
+        axis.ticks = element_line(color="black"))
+ggsave("visium_hd_liver_combined/plots/moransI_KC_genes.pdf",
+       width=3, height=3) 
 
-props_df <- lapply(bin_sizes, function(bin_size) {
-  read.csv(paste0("visium_hd_liver_combined/vizgen/vizgen_grid_", bin_size, "um_celltype_proportions.csv")) %>%
-    pivot_longer(cols=-grid_id, names_to="celltype", values_to="proportion") %>%
-    mutate(bin_size = bin_size)
+# Plot histogram of gene expressions
+visium_obj <- readRDS("data/Visium_HD_Liver_CAW009/Visium_HD_Liver_CAW009_008um.rds")
+genes <- c("Sdc3", "Csf1r", "Kcnj16", "Clec4f")
+
+vishd_genes_counts <- GetAssayData(visium_obj, layer="counts")[genes, ] %>% as.data.frame() %>%
+  rownames_to_column("gene") %>%
+  pivot_longer(-gene, names_to="spot", values_to="count") 
+
+vishd_genes_plots <- lapply(genes, function(g) {
+  pg <- ggplot(vishd_genes_counts %>% filter(gene == g), aes(x=count)) +
+    geom_histogram(bins=10, fill="#56B4E9") +
+    theme_minimal(base_size=7) +
+    labs(x="Counts", title=g) +
+    ggbreak::scale_y_break(c(1e05, 3e05), scales="free") +
+    # comma in y axis
+    scale_y_continuous(labels=scales::comma) +
+    scale_x_continuous(breaks=scales::pretty_breaks(n=5)) +
+    theme(panel.grid.minor = element_blank(),
+          axis.line = element_line(color="black"),
+          axis.ticks = element_line(color="black"),
+          axis.title.y = element_blank(),
+          axis.text.y.right = element_blank(),
+          axis.ticks.y.right = element_blank(),
+          axis.line.y.right = element_blank())
+  
+  ggsave(paste0("visium_hd_liver_combined/plots/histogram_", g, "_vishd.pdf"),
+         pg, width=4, height=4, onefile=FALSE)
+})
+
+
+grid_shp <- read_sf("visium_hd_liver_combined/vizgen/grid_8um.shp") %>% 
+  mutate(FID = FID + 1)
+# Do the same for vizgen
+vizgen_genes_plots <- lapply(genes[1:3], function(g) {
+  vizgen_gene <- read.csv(paste0("visium_hd_liver_combined/vizgen/vizgen_grid_",
+                                 bin_size, "um_", g, "_counts.csv"))
+  
+  vizgen_gene_filled <- vizgen_gene %>% right_join(grid_shp %>% st_drop_geometry() %>%
+                                        select(FID), by=c("index_right"="FID")) %>% 
+    # Fill na with 0
+    mutate(X0 = ifelse(is.na(X0), 0, X0))
+  
+  pg <- ggplot(vizgen_gene_filled, aes(x=X0)) +
+    geom_histogram(binwidth=1, fill="#E69F00") +
+    theme_minimal(base_size=7) +
+    labs(x="Counts", title=g) +
+    ggbreak::scale_y_break(c(5e04, 2.5e05), scales="free") +
+    # comma in y axis
+    scale_y_continuous(labels=scales::comma) +
+    scale_x_continuous(breaks=scales::pretty_breaks(n=5)) +
+    theme(panel.grid.minor = element_blank(),
+          axis.line = element_line(color="black"),
+          axis.ticks = element_line(color="black"),
+          axis.title.y = element_blank(),
+          axis.text.y.right = element_blank(),
+          axis.ticks.y.right = element_blank(),
+          axis.line.y.right = element_blank())
+  print(pg)
+  ggsave(paste0("visium_hd_liver_combined/plots/histogram_", g, "_vizgen.pdf"),
+         pg, width=4, height=4, onefile=FALSE)
+})
+
+
+#### Calculating based on convex hull? boundary? ####
+# https://gis.stackexchange.com/questions/447556/grouping-polygons-based-on-clusters
+vishd_shapes <- read_sf("visium_hd_liver_combined/rds/shapes/CAW009_square_008um.shp")
+vishd_location <- read.csv("visium_hd_liver_combined/rds/shapes/CAW009_square_008um_locationid.csv", row.names=1) %>% 
+  rownames_to_column("spot")
+deconv_props_rank <- readRDS(paste0("visium_hd_liver_combined/rds/deconv_props_all.rds"))
+deconv_props <- deconv_props_rank %>% 
+  filter(dataset == "caw009", bin_size == "008um") %>% 
+  ungroup() %>% 
+  select(spot, celltype, proportion) %>% 
+  tidyr::complete(spot, celltype, fill = list(proportion = 0))
+
+for (ct in unique(deconv_props$celltype)){
+  deconv_props_ct <- deconv_props %>%
+    filter(celltype == ct, proportion > 0)
+  vishd_shapes_sub_ct <- vishd_shapes %>%
+    inner_join(vishd_location %>% filter(spot %in% deconv_props_ct$spot) %>% 
+                 select(spot, location_id),
+               by=c("location_i"="location_id"))
+  
+  # Buffer to make the corners touch, union to dissolve adjacent borders
+  vishd_shapes_merge <- st_cast(st_union(st_buffer(vishd_shapes_sub_ct, 0.1)), "POLYGON")
+  dissolved <- st_sf(vishd_shapes_merge) # Create a sf object from the geometries
+  
+  saveRDS(dissolved, paste0("visium_hd_liver_combined/rds/shapes/CAW009_square_008um_", ct, "_dissolved.rds"))
+}
+
+# Read json
+library(jsonlite)
+
+json_file <- "/home/chananchidas/visium-hd/data/Visium_HD_Liver_CAW009/binned_outputs/square_008um/spatial/scalefactors_json.json"
+json_data <- fromJSON(json_file)
+vishd_scalefactor <- json_data$microns_per_pixel
+# 1 pixel = 0.44223831 micron
+
+vishd_dissolved <- lapply(unique(deconv_props$celltype), function(ct) {
+  convex <- readRDS(paste0("visium_hd_liver_combined/rds/shapes/CAW009_square_008um_", ct, "_dissolved.rds")) %>% 
+    st_convex_hull()
+  data.frame(area = st_area(convex)*(vishd_scalefactor^2),
+             celltype = ct)
 }) %>% bind_rows()
 
-vizgen_ori_props <- read.csv("visium_hd_liver_combined/vizgen/sdata_polyT_obs.csv") %>% 
+ggplot(vishd_dissolved %>% filter(celltype != "Hepatocytes"),
+       aes(y=area, x=celltype, color=celltype)) +
+  geom_boxplot()
+
+
+# Get boundary of each polygon
+#vishd_convex <- st_convex_hull(vishd_shapes_merge)
+
+# Get the area of each geometry
+(st_area(vishd_convex)*(vishd_scalefactor^2)) %>% 
+  data.frame(area = .) %>%
+  filter(area < 10000) %>% 
+  ggplot(aes(x=area)) +
+  geom_histogram()
+  
+
+# Do the same for vizgen
+vizgen <- read.csv(paste0("visium_hd_liver_combined/vizgen/vizgen_grid_",
+                          bin_size, "um_celltype_proportions.csv")) %>% 
+  # replace . in colname with nothing
+  rename_with(~ gsub("\\.", "", .x)) %>% 
+  # rename Kuppfercells to Kupffercells
+  rename(Kupffercells = Kuppfercells)
+grid_shp <- read_sf("visium_hd_liver_combined/vizgen/grid_8um.shp") %>% 
+  mutate(FID = FID + 1) %>% 
+  filter(FID %in% vizgen$grid_id)
+
+vizgen_long <- vizgen %>%
+  pivot_longer(-grid_id, names_to="celltype", values_to="proportion")
+
+for (ct in colnames(vizgen)[-1]){
+  grid_shp_ct <- grid_shp %>% 
+    inner_join(vizgen_long %>% filter(celltype == ct, proportion > 0) %>%
+                 select(grid_id),
+               by=c("FID"="grid_id"))
+  
+  grid_shp_merge <- st_cast(st_union(st_buffer(grid_shp_ct, 0.1)), "POLYGON")
+  dissolved <- st_sf(grid_shp_merge)
+  
+  saveRDS(dissolved, paste0("visium_hd_liver_combined/rds/shapes/vizgen_square_008um_", ct, "_dissolved.rds"))
+}
+
+tmp <- readRDS(paste0("visium_hd_liver_combined/rds/shapes/vizgen_square_008um_", "Kupffercells", "_dissolved.rds"))
+
+vizgen_scalefactor <- 0.108
+vizgen_dissolved <- lapply(colnames(vizgen)[-1], function(ct) {
+  convex <- readRDS(paste0("visium_hd_liver_combined/rds/shapes/vizgen_square_008um_", ct, "_dissolved.rds")) %>% 
+    st_convex_hull()
+  data.frame(area = st_area(convex)*(vizgen_scalefactor^2),
+             celltype = ct)
+}) %>% bind_rows()
+
+ggplot(vizgen_dissolved %>% filter(!celltype %in% c("Hepatocytes", "Unknown"), area < 50000),
+       aes(y=area, x=celltype, color=celltype)) +
+  # Boxplot without outliers
+  geom_boxplot()
+
+# Original vizgen shapes
+# Read in shape file
+vizgen_ori_annot <- read.csv("visium_hd_liver_combined/vizgen/sdata_polyT_obs.csv") %>% 
   select(cells, annotation_own_score_genes) %>% 
-  group_by(annotation_own_score_genes) %>%
-  summarise(n_cells = n()) %>% 
-  mutate(proportion = n_cells / sum(n_cells),
-         bin_size = 0)
+  mutate(cells = as.character(cells)) %>% 
+  rename(celltype = annotation_own_score_genes) %>%
+  mutate(celltype = gsub(" ", "", celltype)) %>%
+  mutate(celltype = ifelse(celltype == "Kuppfercells", "Kupffercells", celltype))
 
-props_df_summ <- props_df %>%
-  group_by(bin_size, celltype) %>% 
-  summarise(mean_prop=mean(proportion)) %>% 
-  bind_rows(vizgen_ori_props %>% rename(celltype = annotation_own_score_genes) %>% select(bin_size, celltype, mean_prop=proportion)) %>% 
-  # remove space and dot from name of celltype
-  mutate(celltype = gsub("[ .]", "", celltype))
+segmented_cells <- read_sf("visium_hd_liver_combined/vizgen/segmentation_mask_boundaries_roi.shp") %>% 
+  left_join(vizgen_ori_annot %>% select(cells, celltype),
+            by=c("index"="cells"))
 
-# Plot barplot
-ggplot(props_df_summ, aes(x=reorder(celltype, -mean_prop), y=mean_prop, fill=celltype)) +
-  geom_bar(stat="identity") +
-  theme_minimal() +
-  theme(axis.text.x=element_text(angle=45, hjust=1)) +
-  labs(x="Cell Type", y="Mean Proportion", title="Mean Cell Type Proportions in Vizgen Data by Bin Size") +
-  scale_fill_brewer(palette="Set3") +
-  guides(fill=FALSE) +
-  facet_wrap(~bin_size, nrow=1)
+# Get area of cells
+segmented_cells_area <- segmented_cells %>%
+  mutate(area = st_area(st_convex_hull(geometry))*vizgen_scalefactor*vizgen_scalefactor) %>%
+  data.frame()
 
+ggplot(segmented_cells_area %>% filter(!celltype %in% c("Hepatocytes", "Unknown")),
+       aes(y=area, x=celltype, color=celltype)) +
+  # Boxplot without outliers
+  geom_boxplot()
 
+# Do this with the genes?
