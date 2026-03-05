@@ -3,12 +3,12 @@ library(tidyverse)
 library(patchwork)
 library(caret)
 library(precrec)
-source("visium_hd_brain_ff/0_utils.R")
+source("visium_hd_brain_ff/4_0_utils.R")
 
 # First, let's read in scrublet and RCTD results, and compare them
-doublet_props <- read.table(paste0("visium_hd_brain_ff/Visium_HD_MouseBrain_FF_008um/proportions_rctd_Visium_HD_MouseBrain_FF_008um"),
+doublet_props <- read.table("visium_hd_brain_ff/Visium_HD_MouseBrain_FF_008um/proportions_rctd_Visium_HD_MouseBrain_FF_008um",
                             header = TRUE)
-doublet_info <- read.table(paste0("visium_hd_brain_ff/Visium_HD_MouseBrain_FF_008um/proportions_rctd_Visium_HD_MouseBrain_FF_008um_doublet_info.tsv"),
+doublet_info <- read.table("visium_hd_brain_ff/Visium_HD_MouseBrain_FF_008um/proportions_rctd_Visium_HD_MouseBrain_FF_008um_doublet_info.tsv",
                            header = TRUE)
 
 classes_colors <- c("singlet"="forestgreen", "doublet_certain"="navyblue",
@@ -41,10 +41,9 @@ scrublet_res_subset <- scrublet_res %>% filter(spot_id %in% doublet_info$spot) %
 conf_matrix <- caret::confusionMatrix(scrublet_res_subset$predicted_doublet %>% factor(levels=names(classes_colors)),
                                       doublet_info$spot_class %>% factor(levels=names(classes_colors)))
 
-
 pheatmap::pheatmap(conf_matrix$table[1:2,] %>% `rownames<-`(c("singlet", "doublet")),
                    scale="row",
-                 color = colorRampPalette(brewer.pal(n = 9, name = "Blues"))(100),
+                 color = colorRampPalette(RColorBrewer::brewer.pal(n = 9, name = "Blues"))(100),
                  cluster_rows = F, cluster_cols = FALSE,
                  main = "Scrublet (rows) vs RCTD (cols) predictions",
                  display_numbers=conf_matrix$table[1:2,],
@@ -52,6 +51,7 @@ pheatmap::pheatmap(conf_matrix$table[1:2,] %>% `rownames<-`(c("singlet", "double
                  angle_col = 0,
                  filename = "visium_hd_brain_ff/plots/conf_matrix_scrublet_vs_rctd.png",
                  width=6, height=3)
+
 ############################
 # Read in segmentation
 intersection <- read.csv("visium_hd_brain_ff/intersections.csv")
@@ -79,13 +79,14 @@ if (filter_nucleus_area){
   intersection <- intersection %>% filter(area > filter_val)
 }
 
-grid_area <- max(intersection$nucleus_area) # 853.56
+grid_area <- max(intersection$nucleus_area) # 854.013
 
 # Bin nucleus area in increments of 25
 intersection <- intersection %>% mutate(nucleus_area_bin =
                     cut(nucleus_area, breaks=c(seq(0, max(intersection$nucleus_area), by=25), Inf)))
 
 # Check -> does more nuclei area correspond to the counts?
+# Trend seems less clear than FFPE
 ggplot(intersection, aes(x=nucleus_area_bin, y=total_counts)) +
   geom_boxplot() +
   theme_minimal() +
@@ -124,7 +125,7 @@ ggplot(intersection, aes(x=nucleus_area_bin, y=total_counts)) +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
 
 # Check other spots
-visium_obj <- Load10X_Spatial(data.dir = "data/Visium_HD_MouseBrain_FF/", bin.size = 8)
+visium_obj <- readRDS("data/Visium_HD_MouseBrain_FF/Visium_HD_MouseBrain_FF_008um.rds")
 
 length(setdiff(colnames(visium_obj), unique(intersection$spot_id))) # 250694 => These spots have no nuclei
 length(intersect(colnames(visium_obj), unique(intersection$spot_id))) # 203126
@@ -223,7 +224,7 @@ barplot_abs <- ggplot(intersection_join_scrub_summ %>% filter(nucleus_count <= 2
         panel.grid.major.x = element_blank(),
         legend.title = element_blank()
         )
-barplot_abs
+
 barplot_rel <- ggplot(intersection_join_scrub_summ %>% filter(nucleus_count <= 2),
        aes(x=factor(nucleus_count), fill=factor(predicted_doublet, levels = c("False", "True"))) ) +
   geom_bar(position="fill", width=0.6) +
@@ -235,7 +236,6 @@ barplot_rel <- ggplot(intersection_join_scrub_summ %>% filter(nucleus_count <= 2
         plot.title = element_text(size = 11),
         panel.grid.major.x = element_blank(),
         legend.title = element_blank())
-barplot_rel
 
 barplot_abs + barplot_rel +
   # gather legends

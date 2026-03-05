@@ -3,12 +3,12 @@ library(tidyverse)
 # Compare doublet mode with and without spatial coordinates
 props_with_coord <- read.table("visium_hd_brain/Visium_HD_MouseBrain_008um/proportions_rctd_Visium_HD_MouseBrain_008um",
                                header = TRUE)
-props_wo_coord <- read.table("visium_hd_brain/Visium_HD_MouseBrain_008um/proportions_rctd_Visium_HD_MouseBrain_008um_converted_doublet",
+props_wo_coord <- read.table("visium_hd_brain/Visium_HD_MouseBrain_008um/proportions_rctd_Visium_HD_MouseBrain_008um_nocoords",
                              header = TRUE)
 
 doublet_info_with_coord <- read.table("visium_hd_brain/Visium_HD_MouseBrain_008um/proportions_rctd_Visium_HD_MouseBrain_008um_doublet_info.tsv",
                                       header = TRUE)
-doublet_info_wo_coord <- read.table("visium_hd_brain/Visium_HD_MouseBrain_008um/proportions_rctd_Visium_HD_MouseBrain_008um_converted_doublet_doublet_info.tsv",
+doublet_info_wo_coord <- read.table("visium_hd_brain/Visium_HD_MouseBrain_008um/proportions_rctd_Visium_HD_MouseBrain_008um_nocoords_doublet_info.tsv",
                                     header = TRUE)
 
 # Calculate correlation of proportions
@@ -56,6 +56,7 @@ conf_matrix$table %>%
               sep = "\t", quote = FALSE)
 classes_colors <- c("singlet"="forestgreen", "doublet_certain"="navyblue",
                     "doublet_uncertain"="orange", "reject"="red")
+
 # For the spots that differ in maximum cell type prediction
 # Are they more likely to be rejects?
 max_celltypes %>% filter(celltype_with_coord != celltype_wo_coord) %>%

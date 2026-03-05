@@ -1,8 +1,5 @@
 library(Seurat)
 library(tidyverse)
-library(RColorBrewer)
-qual_col_pals = brewer.pal.info[brewer.pal.info$category == 'qual',]
-col_vector = unlist(mapply(brewer.pal, qual_col_pals$maxcolors, rownames(qual_col_pals)))
 
 celltype_colors_df <- read.csv("data/scref_MouseBrain_ABA/cell_metadata_with_cluster_annotation_downsampled.csv") %>%
   distinct(class, class_color) %>% 
@@ -13,31 +10,30 @@ celltype_colors <- celltype_colors_df$class_color %>% setNames(celltype_colors_d
 visium_obj <- readRDS("data/Visium_HD_MouseBrain/Visium_HD_MouseBrain_008um.rds")
 dim(visium_obj) # 19059 genes x 393543 spots
 
-ext <- "_converted_doublet" # "", "_converted_doublet", "_converted_full"
+ext <- "_full" # "" or "_full"
 
 deconv_props <- read.table(paste0("visium_hd_brain/Visium_HD_MouseBrain_008um/proportions_rctd_Visium_HD_MouseBrain_008um", ext),
                            header = TRUE)
 dim(deconv_props) #278323 spots
 
-# Get removed rows from the other file
-removed_rows <- scan("visium_hd_brain/Visium_HD_MouseBrain_008um/proportions_rctd_rows_removed", what="character") %>% 
-  .[grepl("s_008um", .)]
-
-length(removed_rows) # 115220
+removed_spots <- Cells(visium_obj)[which(visium_obj@meta.data[,"nCount_Spatial.008um"] < 100)]
 
 # Check if removed rows + leftover rows == total rows (yes)
-length(removed_rows) + dim(deconv_props)[1] == dim(visium_obj)[2]
+length(removed_spots) + dim(deconv_props)[1] == dim(visium_obj)[2]
+
+# Print number of removed spots, total spots, and percentage
+cat("Number of removed spots:", length(removed_spots), "\n")
+cat("Total spots:", dim(visium_obj)[2], "\n")
+cat("Percentage of removed spots:", 
+    round(length(removed_spots) / dim(visium_obj)[2] * 100, 2), "%\n")
 
 # Subset visium_obj to only include spots that were not removed
-visium_obj_subset <- visium_obj[, !(colnames(visium_obj) %in% removed_rows)]
+visium_obj_subset <- visium_obj[, !(colnames(visium_obj) %in% removed_spots)]
 
 dim(visium_obj_subset) # 19059 genes x 278323 spots
 
 # Add rownames to deconv_props
 rownames(deconv_props) <- colnames(visium_obj_subset)
-
-# Check counts of removed rows
-visium_obj[, colnames(visium_obj) %in% removed_rows]$nCount_Spatial.008um %>% hist()
 
 p_ncount <- SpatialFeaturePlot(visium_obj, "nCount_Spatial.008um") +
   labs(fill = "nCount") +
@@ -52,7 +48,6 @@ ggsave("visium_hd_brain/plots/spatialfeatureplot_nCount_subset.png", p_ncount_su
        width = 8, height = 6, bg = "white") 
 
 # Assign barcode to most abundant cell type per spot
-all(rownames(deconv_props) == colnames(visium_obj_subset))
 visium_obj_subset$celltype <- factor(colnames(deconv_props)[max.col(deconv_props)],
                                      levels = names(celltype_colors))
 
@@ -63,44 +58,38 @@ p_celltype <- SpatialDimPlot(visium_obj_subset, group.by = "celltype",
                     name="Cell type") +
   guides(fill = guide_legend(override.aes = list(size = 3))) +
   theme(legend.position = "right",
-        legend.text = element_text(size=6),
-        legend.title = element_text(size=7)
+        legend.text = element_text(size=5),
+        legend.title = element_text(size=6),
+        legend.key.size = unit(0.3, "cm")
         )
 p_celltype
 
-ggsave(paste0("visium_hd_brain/plots/spatialdimplot_celltype", ext, ".pdf"), p_celltype,
-       width = 8, height = 6, bg = "white")
-# ggsave(paste0("visium_hd_brain/plots/spatialdimplot_celltype", ext, ".png"), p_celltype,
+# ggsave(paste0("visium_hd_brain/plots/spatialdimplot_celltype", ext, ".pdf"), p_celltype,
 #        width = 8, height = 6, bg = "white")
+ggsave(paste0("visium_hd_brain/plots/spatialdimplot_celltype", ext, ".png"), p_celltype,
+       width = 8, height = 6, bg = "white", dpi=300)
 
 # Get region annotations
 region_annotations <- readRDS("data/Visium_HD_MouseBrain/tissue_positions_with_annotations_008um.rds")
 
 # Filter to only spots that were deconvolved
 region_annotations <- region_annotations %>% filter(barcode %in% rownames(deconv_props),
-                                                    !is.na(acronym_lvl6)) %>% 
-  mutate(region_broad = case_when(
-    acronym_lvl6 %in% c("VIS", "PTLp", "SS", "AUD", "TEa", "RHP") ~ "Cerebral cortex",
-    acronym_lvl6 %in% c("STRd", "sAMY") ~ "Cerebral nuclei",
-    acronym_lvl6 %in% c("DORpm", "DORsm") ~ "Thalamus",
-    acronym_lvl6 %in% c("MEZ", "LZ", "PVR", "PVZ") ~ "Hypothalamus",
-    acronym_lvl6 %in% c("HIP") ~ "Hippocampus",
-    TRUE ~ acronym_lvl6
-  ))
+                                                    !grepl("unassigned", division))
 
 # Label regions in the plot, calculate median x and y coordinates of each region
 region_annot_label <- region_annotations %>% 
-  group_by(acronym_lvl6) %>% 
+  group_by(division) %>% 
   summarise(median_x = median(pxl_col_in_lowres),
             median_y = median(pxl_row_in_lowres))
 
-p_regions <- ggplot(region_annotations,aes(y=pxl_row_in_lowres, x=pxl_col_in_lowres, fill=acronym_lvl6)) +
+p_regions <- ggplot(region_annotations,aes(y=pxl_row_in_lowres, x=pxl_col_in_lowres, fill=division)) +
   geom_bin2d(bins=500) + scale_y_reverse() + coord_fixed(ratio=1) +
-  geom_label(data=region_annot_label, aes(x=median_x, y=median_y, label=acronym_lvl6), size=5) +
+  geom_label(data=region_annot_label, aes(x=median_x, y=median_y, label=division), size=5) +
   coord_fixed() +
   theme_classic() +
   theme(legend.position = "none",
         axis.title = element_blank())
+p_regions
 ggsave("visium_hd_brain/plots/annotated_regions.png", p_regions,
        width = 8, height = 6, bg = "white")
 
@@ -108,28 +97,28 @@ ggsave("visium_hd_brain/plots/annotated_regions.png", p_regions,
 deconv_props_df <- deconv_props %>% tibble::rownames_to_column("barcode") %>% 
   filter(barcode %in% region_annotations$barcode) %>% 
   pivot_longer(-barcode, names_to = "celltype", values_to = "proportion") %>% 
-  inner_join(region_annotations %>% select(barcode, acronym_lvl6, pxl_col_in_lowres, pxl_row_in_lowres, region_broad),
+  inner_join(region_annotations %>% select(barcode, division, pxl_col_in_lowres, pxl_row_in_lowres),
              by = "barcode")
 
 # Summarise per region
-deconv_props_summ <- deconv_props_df %>% group_by(region_broad, acronym_lvl6, celltype) %>%
+deconv_props_summ <- deconv_props_df %>% group_by(division, celltype) %>%
   summarise(proportion = mean(proportion))
 
 # Stacked barplot per region
-p <- ggplot(deconv_props_summ, aes(x = acronym_lvl6, y = proportion, fill = celltype)) +
+p <- ggplot(deconv_props_summ, aes(x = division, y = proportion, fill = celltype)) +
   geom_bar(stat = "identity", width=0.6) +
   theme_minimal(base_size = 8) +
-  scale_fill_manual(values = celltype_colors) +
+  scale_fill_manual(values = celltype_colors,
+                    labels = function(x) gsub("^X", "", x),
+                    name="Cell type") +
   scale_y_continuous(expand = expansion(mult = c(0.02, 0.02))) +
-  facet_grid(~region_broad, scales = "free_x", space='free') +
   theme(axis.title = element_blank(),
-        panel.grid.major.x = element_blank(),
-        legend.position = "none")
+        panel.grid.major.x = element_blank())
 p
-ggsave(paste0("visium_hd_brain/plots/barplot_avg_by_region", ext, ".pdf"), p,
-       width = 8, height = 6, bg = "white")
-# ggsave(paste0("visium_hd_brain/plots/barplot_avg_by_region", ext, ".png"), p,
+# ggsave(paste0("visium_hd_brain/plots/barplot_avg_by_region", ext, ".pdf"), p,
 #        width = 8, height = 6, bg = "white")
+ggsave(paste0("visium_hd_brain/plots/barplot_avg_by_region", ext, ".png"), p,
+       width = 8, height = 6, bg = "white")
 
 
 # What is the distribution of cell types across the tissue?
@@ -144,12 +133,12 @@ p_boxplot_all <- ggplot(deconv_props_df %>% filter(proportion > 0.0001),
         axis.text.x = element_text(angle = 45, hjust = 1),
         panel.grid.major.x = element_blank(),) +
   ggtitle("Cell type proportions across tissue (prop > 0.0001)")
-#p_boxplot_all
+p_boxplot_all
 ggsave(paste0("visium_hd_brain/plots/boxplot_all", ext, ".png"), p_boxplot_all,
        width = 15, height = 8, bg = "white")
 
 
-# DOUBLET MODE
+#### Only for Doublet mode
 ext <- "" # "", "_converted_doublet"
 doublet_props <- read.table(paste0("visium_hd_brain/Visium_HD_MouseBrain_008um/proportions_rctd_Visium_HD_MouseBrain_008um", ext),
                             header = TRUE)
@@ -176,37 +165,18 @@ ggsave(paste0("visium_hd_brain/plots/spatialdimplot_spot_class", ext, ".png"), p
 # Plot by region
 doublet_info_region <- doublet_info %>%
   filter(spot %in% region_annotations$barcode) %>% 
-  inner_join(region_annotations %>% select(barcode, acronym_lvl6, region_broad),
+  inner_join(region_annotations %>% select(barcode, division),
              by = c("spot" = "barcode"))
 
-p_region_spotclass <- ggplot(doublet_info_region, aes(x = acronym_lvl6,
+p_region_spotclass <- ggplot(doublet_info_region, aes(x = division,
                               fill = factor(spot_class, levels=names(classes_colors)))) +
   geom_bar(position = "fill", width=0.6) +
   theme_minimal(base_size = 8) +
   scale_fill_manual(values = classes_colors, name="Spot class") +
   scale_y_continuous(expand = expansion(mult = c(0.02, 0.02))) +
-  facet_grid(~region_broad, scales = "free_x", space='free') +
   theme(axis.title = element_blank(),
         panel.grid.major.x = element_blank())
 # p_region_spotclass
 ggsave(paste0("visium_hd_brain/plots/barplot_spot_class_by_region", ext, ".png"),
        p_region_spotclass,
        width = 8, height = 6, bg = "white")
-
-# Make confusion matrix
-celltypes <- celltype_position$celltype %>% unique %>% sort
-conf_matrix <- caret::confusionMatrix(colnames(deconv_props)[max.col(deconv_props)] %>% factor(levels=celltypes),
-                                      colnames(doublet_props)[max.col(doublet_props)] %>% factor(levels=celltypes))
-pheatmap::pheatmap(conf_matrix$table, scale="row",
-                   color = colorRampPalette(rev(brewer.pal(n = 7, name = "RdGy")))(100),
-                   cluster_rows = F, cluster_cols = FALSE,
-                   main = "Full mode (rows) vs Doublet mode (cols) predictions",
-                   filename = "visium_hd_brain/plots/conf_matrix_full_vs_doublet.png")
-
-# Get correlation of proportions between full and doublet mode
-mean(diag(cor(deconv_props, doublet_props)))
-
-# Overlap of most abundant cell type
-max_celltypes <- data.frame(celltype_full = colnames(deconv_props)[max.col(deconv_props)],
-                                celltype_doublet = colnames(doublet_props)[max.col(doublet_props)])
-max_celltypes %>% filter(celltype_full == celltype_doublet) %>% nrow / nrow(max_celltypes)

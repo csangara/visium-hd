@@ -95,3 +95,14 @@ final_cell_joined = abc_cache.get_metadata_dataframe(
     file_name='cell_metadata_with_parcellation_annotation',
     dtype={"cell_label": str}
     )
+
+# Zhuang dataset
+datasets = ['Zhuang-ABCA-1', 'Zhuang-ABCA-2']
+for d in datasets :
+
+    cell = abc_cache.get_metadata_dataframe(
+        directory=d,
+        file_name='cell_metadata_with_cluster_annotation',
+        dtype={"cell_label": str}
+    )
+    ccf_coordinates = abc_cache.get_metadata_dataframe(directory=f"{d}-CCF", file_name='ccf_coordinates')

@@ -1,28 +1,28 @@
+library(tidyverse)
+library(Seurat)
 source("visium_hd_brain_combined/0_brain_init.R")
 
 # Read RCTD files 
 deconv_props_list <- list()
 visium_objs_list <- list()
 for (ds in c("ffpe", "fresh_frozen")){
-  ext <- ifelse(ds == "ffpe", "_converted_doublet", "")
   ds_ext <- ifelse(ds == "ffpe", "", "_FF")
   
   visium_obj <- readRDS(paste0("data/Visium_HD_MouseBrain", ds_ext, "/Visium_HD_MouseBrain", ds_ext, "_008um.rds"))
   deconv_props <- read.table(paste0("visium_hd_brain", tolower(ds_ext), "/Visium_HD_MouseBrain", ds_ext,
-                                    "_008um/proportions_rctd_Visium_HD_MouseBrain", ds_ext, "_008um", ext),
+                                    "_008um/proportions_rctd_Visium_HD_MouseBrain", ds_ext, "_008um"),
                              header = TRUE)
-  removed_rows <- scan(paste0("visium_hd_brain", tolower(ds_ext), "/Visium_HD_MouseBrain", ds_ext,
-                              "_008um/proportions_rctd_rows_removed"), what="character") %>% 
-    .[grepl("s_008um", .)]
   
-  stopifnot(length(removed_rows) + dim(deconv_props)[1] == dim(visium_obj)[2])
-  visium_obj_subset <- visium_obj[, !(colnames(visium_obj) %in% removed_rows)]
+  removed_spots <- Cells(visium_obj)[which(visium_obj@meta.data[,"nCount_Spatial.008um"] < 100)]
+  
+  stopifnot(length(removed_spots) + dim(deconv_props)[1] == dim(visium_obj)[2])
+  visium_obj_subset <- visium_obj[, !(colnames(visium_obj) %in% removed_spots)]
   rownames(deconv_props) <- colnames(visium_obj_subset)
   
   visium_objs_list[[ds]] <- visium_obj_subset
   deconv_props_list[[ds]] <- deconv_props
   
-  rm(visium_obj, visium_obj_subset, deconv_props, removed_rows)
+  rm(visium_obj, visium_obj_subset, deconv_props, removed_spots)
 }
 
 deconv_props_df <- lapply(1:2, function(i){
@@ -46,7 +46,7 @@ region_annotations_df <- lapply(c("ffpe", "fresh_frozen"), function(ds){
   
 }) %>% bind_rows()
                        
-# Reas merfish_cells from 1_3
+# Read merfish_cells from 1_3
 merfish_cells <- readRDS("visium_hd_brain_combined/rds/merfish_cells_3datasets_combined.rds")
 
 common_regions <- intersect(unique(region_annotations_df$division),
@@ -193,25 +193,25 @@ deconv_props_region_summ_top10 <- merfish_cells_summ_top10 %>% group_by(region) 
 
 return_boxplot <- function(merfish_dataset, deconv_props_df, regions_to_exclude, nrow=2) {
   ggplot(merfish_dataset %>% filter(!region %in% regions_to_exclude),
-         aes(x = class, y = prop, color=class, fill=source)) +
-    geom_boxplot(linewidth=0.2, outlier.shape = 16, outlier.size = 0.5, outlier.stroke = 0, show.legend = FALSE) +
-    geom_point(data = deconv_props_df %>% filter(source == "ffpe", !region %in% regions_to_exclude),
+         aes(x = class, y = prop, color=class, group=interaction(class, source))) +
+    geom_boxplot(linewidth=0.2, outlier.shape = 16, outlier.size = 0.5, outlier.stroke = 0, show.legend = FALSE, fill="white") +
+    geom_point(data = deconv_props_df %>% filter(source == "ffpe", !region %in% regions_to_exclude, mean_prop > 0),
                aes(x=class, y=mean_prop, shape = source),
-               position = position_nudge(x=-0.1), size=1, stroke=0.25, show.legend = TRUE) +
-    geom_point(data = deconv_props_df %>% filter(source == "fresh_frozen", !region %in% regions_to_exclude),
+               position = position_nudge(x=-0.1), size=1, stroke=0.25, fill = "white", show.legend = TRUE) +
+    geom_point(data = deconv_props_df %>% filter(source == "fresh_frozen", !region %in% regions_to_exclude, mean_prop > 0),
                aes(x=class, y=mean_prop, shape = source),
-               position = position_nudge(x=0.1), size=1, stroke=0.25) +
+               position = position_nudge(x=0.1), size=1, stroke=0.25, fill="white") +
     ggh4x::facet_wrap2(~region, scales = "free_x",
                        labeller = as_labeller(proper_region_names),
                        nrow = nrow
     ) +
     scale_shape_manual(values = c(22, 23), labels = c("FFPE", "Fresh Frozen")) +
     scale_color_manual(values = celltype_colors, labels = proper_celltype_names, drop=FALSE) +
-    scale_fill_manual(values = c("white", "white", rep("white", 3)), guide = "none") +
+    #scale_fill_manual(values = c(celltype_colors), guide = "none") +
     scale_x_discrete(labels = function(x) str_replace_all(x, "^([0-9]+)([a-zA-Z0-9]+)$", "\\1")) +
     scale_y_continuous(breaks = seq(0, 1, by=0.2)) +
     # Override aes for legend
-    guides(color = guide_legend(override.aes = list(shape = 15, size=3), nrow=5, order=1), 
+    guides(color = guide_legend(override.aes = list(shape = 15, size=3), nrow=6, order=1), 
            shape = guide_legend(override.aes = list(size=1.5), ncol=1, order=2)) +
     labs(y = "Cell type proportion", color = "Cell type", shape = "VisiumHD Dataset") +
     theme_bw(base_size=8) +
@@ -307,104 +307,43 @@ deconv_props_region_df$division %>% table(useNA = "ifany")
 #   theme(axis.title = element_blank(),
 #         panel.grid.major.x = element_blank())
 
-## STOPPED HERE ##
-library(precrec)
+# Calculate FPR for each region
+fprs <- merfish_cells_summ %>% distinct(region, class, source) %>% 
+  #tidyr::complete(region, class, source) %>%
+  count(region, class) %>% 
+  tidyr::complete(region, class, fill=list(n=0)) %>% 
+  filter(n == 0) %>% select(-n) %>% 
+  # Merge with number of spots in each region
+  left_join(region_annotations_df %>%
+              group_by(division, source) %>%
+              summarise(n_spots = n()) %>%
+              rename(region = division),
+            by = c("region"), relationship = "many-to-many") %>% 
+  left_join(deconv_props_count,
+            by = c("region" = "division", "class" = "celltype", "source")) %>% 
+  # Replace NA with 0
+  mutate(n = ifelse(is.na(n), 0, n),
+         tn = n_spots-n) %>% 
+  rename(fp = n) %>% 
+  mutate(fpr = fp / (fp + tn)) %>%
+  group_by(region, source) %>%
+  summarise(mean_fpr = mean(fpr)) %>% 
+  pivot_wider(names_from = source, values_from = mean_fpr) %>% 
+  ungroup() %>% 
+  # PUT NA FOR region == PAL and ffpe
+  mutate(ffpe = ifelse(region == "PAL", NA, ffpe),
+         fresh_frozen = ifelse(region == "CTXsp", NA, fresh_frozen))
+fprs
+# Save as csv
+write.csv(fprs,
+          file = "visium_hd_brain_combined/rds/deconv_fpr_per_region.csv",
+          row.names = FALSE, quote=FALSE)
 
-# Are the regions in ffpe and fresh_frozen common?
-all(sort(region_annotations_df %>% filter(source == "fresh_frozen") %>% distinct(division) %>% pull(division)) ==
-  sort(region_annotations_df %>% filter(source == "ffpe") %>% distinct(division) %>% pull(division)))
+fprs %>% select(region, ffpe) %>% filter(region != "PAL") %>% pull(ffpe) %>% mean
+fprs %>% select(region, fresh_frozen) %>% filter(region != "CTXsp") %>% pull(fresh_frozen) %>% mean
 
-common_regions <- intersect(unique(region_annotations_df$division),
-                            merfish_cells_table_binary$parcellation_division) %>% 
-  # remove any that is 'unassigned'
-  .[!grepl("unassigned", .)]
-  
-test_props <- deconv_props_df %>% 
-  inner_join(region_annotations_df,
-             by = c("spot" = "barcode",
-                    "source")) %>% 
-  # Split by section
-  filter(division %in% common_regions) %>% 
-  arrange(source, spot, celltype) %>% 
-  mutate(division = factor(division, levels = common_regions)) %>%
-  group_by(source) %>%
-  group_split() %>% 
-  setNames(c("ffpe", "fresh_frozen"))
-
-test_props_list <- lapply(test_props, function(k){
-  k %>% group_by(division) %>%
-    group_split() %>%
-    setNames(common_regions) %>% 
-    lapply(., function(df) { df %>% pull(proportion) })
-})
-  
-# Labels for each region
-merfish_cells_table_binary <- readRDS("visium_hd_brain_combined/rds/merfish_division_by_celltype_binary.rds")
-
-n_spots_per_region <- sapply(test_props_list, function(k) {
-   sapply(k, function(j) { length(j) })
-  })
-
-ncelltypes <- ncol(merfish_cells_table_binary) - 1
-known_props <- merfish_cells_table_binary %>% 
-  filter(parcellation_division %in% common_regions) %>% 
-  # arrange by common regions
-  arrange(factor(parcellation_division, levels = common_regions)) %>% 
-  pivot_longer(-parcellation_division, names_to = "celltype", values_to = "presence") %>% 
-  group_by(parcellation_division) %>%
-  group_split() %>%
-  setNames(common_regions)
-known_props_rep <- lapply(1:2, function(i) {
-  lapply(common_regions, function(r){
-    rep(known_props[[r]] %>% pull(presence), times = n_spots_per_region[r,i]/ncelltypes)
-  })
-}) %>% setNames(c("ffpe", "fresh_frozen"))
-  
-# Calculate false positive rate
-mmpoints <- lapply(c("ffpe", "fresh_frozen"), function(ds) {
-  deconv_scores <- join_scores(test_props_list[[ds]], chklen = FALSE)
-  known_scores <- join_labels(known_props_rep[[ds]], chklen = FALSE)
-  mmdat <- mmdata(deconv_scores, known_scores,
-                  modnames = rep(ds,8),
-                  dsids = 1:length(common_regions))
-  # mmcurves <- evalmod(mmdat)
-  evalmod(mmdat, mode = "basic")
-})
-
-
-ct_groundtruth <- merfish_cells_table_binary %>% 
-  filter(parcellation_division == common_regions[1]) %>% 
-  pivot_longer(-parcellation_division, names_to = "celltype", values_to = "presence") %>% 
-  filter(presence == 0) %>% 
-  pull(celltype)
-
-deconv_subset <- deconv_props_df %>% filter(source == "ffpe") %>% 
-  right_join(region_annotations_df %>% filter(source == "ffpe",
-                                              division == common_regions[1]),
-             by = c("spot" = "barcode")) %>% 
-  filter(celltype %in% ct_groundtruth)
-deconv_subset_binary <- deconv_subset %>%  select(spot, celltype, proportion) %>% 
-  mutate(proportion = case_when(proportion > 0~ 1,
-                              TRUE ~ 0)) %>% 
-  group_by(celltype, proportion) %>% 
-  summarise(n = n()) %>% 
-  group_by(celltype) %>% 
-  summarise(fpr = n[proportion == 1] / sum(n))
-
-fprs <- lapply(c("ffpe", "fresh_frozen"), function(ds) {
-    
-    known_props <- binary_gt[,region_metadata %>% filter(section == sect) %>% 
-                               pull(metaregion)] %>% t %>%
-      .[,as.character(unique(test_props$celltype))] %>% melt
-    
-    confusion <- data.frame(test_props = test_props %>% pull(proportion),
-                            known_props = known_props %>% pull(value)) %>%
-      mutate(category = case_when(known_props > 0 & test_props > thresh ~ "tp",
-                                  known_props == 0 & test_props <= thresh ~ "tn",
-                                  known_props > 0 & test_props <= thresh ~ "fn",
-                                  known_props == 0 & test_props > thresh ~ "fp"))
-    k <- table(factor(confusion$category, levels=c("fp", "tp", "tn", "fn")))
-    
-    (k["fp"] / (k["fp"] + k["tn"])) %>% unname
-})
-
+deconv_props_count <- deconv_props_df %>% filter(proportion > 0) %>% 
+  left_join(region_annotations_df %>% 
+              select(barcode, division, source),
+            by = c("spot" = "barcode", "source")) %>% 
+  count(division, source, celltype)

@@ -38,6 +38,7 @@ pheatmap::pheatmap(conf_matrix$table[1:2,] %>% `rownames<-`(c("singlet", "double
                  angle_col = 0,
                  #filename = "visium_hd_brain/plots/conf_matrix_scrublet_vs_rctd.png",
                  width=6, height=3)
+
 ############################
 # Read in segmentation
 intersection <- read.csv("visium_hd_brain/intersections.csv")
@@ -59,6 +60,7 @@ ggplot(intersection %>% distinct(id, area),
   theme_minimal() +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
 
+# Filter out very small nuclei?
 filter_nucleus_area <- FALSE
 filter_val <- quantile(intersection %>% distinct(id, area) %>% pull(area), probs = c(0.25))
 if (filter_nucleus_area){
@@ -71,7 +73,7 @@ grid_area <- max(intersection$nucleus_area) # 853.56
 intersection <- intersection %>% mutate(nucleus_area_bin =
                     cut(nucleus_area, breaks=c(seq(0, max(intersection$nucleus_area), by=25), Inf)))
 
-# Check -> does more nuclei area correspond to the counts?
+# Check: does more nuclei area correspond to the counts? -> kind of
 ggplot(intersection, aes(x=nucleus_area_bin, y=total_counts)) +
   geom_boxplot() +
   theme_minimal() +
@@ -102,14 +104,14 @@ ggplot(intersection %>% filter(area > filter_val) %>%
 ggsave("visium_hd_brain/plots/barplot_nucleus_count_per_bin.png",
        width=7, height=5, dpi=300, bg="white")
 
-# Is there the same trend for more nuclei? -> yes
+# Is there the same trend count vs nuclei area for all #nuclei? -> yes
 ggplot(intersection, aes(x=nucleus_area_bin, y=total_counts)) +
   geom_boxplot() +
   theme_minimal() +
   facet_wrap(~nucleus_count) +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
 
-# Check other spots
+# Plot number of nuclei spatially
 visium_obj <- readRDS("data/Visium_HD_MouseBrain/Visium_HD_MouseBrain_008um.rds")
 
 length(setdiff(colnames(visium_obj), unique(intersection$spot_id))) # 222724 => These spots have no nuclei
@@ -149,7 +151,7 @@ SpatialDimPlot(visium_obj, group.by = "nuclei_count_group", image.alpha=0, pt.si
 ggsave("visium_hd_brain/plots/spatialdimplot_nuclei_count_group.png",
        width=7, height=7, dpi=300, bg="white")
 
-# Intersect with rctd
+# Check if RCTD doublet predictions correspond with segmentation (not really)
 nucleus_pct_threshold <- 0
 
 intersection_join_rctd <- inner_join(nuclei_presence_df, doublet_info, by = c("spot_id" = "spot")) %>%
@@ -160,7 +162,6 @@ intersection_join_rctd <- inner_join(nuclei_presence_df, doublet_info, by = c("s
 
 intersection_join_rctd <- intersection_join_rctd %>%
   distinct(spot_id, spot_class, nucleus_count) 
-
 
 # Bar plot of n_nucleus and count spot_class
 barplot_abs <- ggplot(intersection_join_rctd %>% filter(nucleus_count <= 2),
@@ -190,6 +191,7 @@ barplot_abs + barplot_rel +
 ggsave("visium_hd_brain/plots/barplot_rctd_spotclass_per_n_nucleus.png",
        width=7, height=5, dpi=300, bg="white")
 
+# Now check if scrublet predictions align with segmentation (also not really)
 intersection_join_scrub <- inner_join(nuclei_presence_df, scrublet_res, by = c("spot_id" = "spot_id")) %>%
   # Only keep if nucleus_area_percentage > threshold
   filter(nucleus_area_percentage > nucleus_pct_threshold) #%>% 
@@ -212,7 +214,7 @@ barplot_abs <- ggplot(intersection_join_scrub_summ %>% filter(nucleus_count <= 2
         panel.grid.major.x = element_blank(),
         legend.title = element_blank()
         )
-barplot_abs
+
 barplot_rel <- ggplot(intersection_join_scrub_summ %>% filter(nucleus_count <= 2),
        aes(x=factor(nucleus_count), fill=factor(predicted_doublet, levels = c("False", "True"))) ) +
   geom_bar(position="fill", width=0.6) +
@@ -224,7 +226,6 @@ barplot_rel <- ggplot(intersection_join_scrub_summ %>% filter(nucleus_count <= 2
         plot.title = element_text(size = 11),
         panel.grid.major.x = element_blank(),
         legend.title = element_blank())
-barplot_rel
 
 barplot_abs + barplot_rel +
   # gather legends
@@ -245,4 +246,3 @@ confusionMatrix(intersection_join_scrub_filter$predicted_doublet %>% factor(leve
                 intersection_join_scrub_filter %>% mutate(ground_truth = ifelse(nucleus_count == 1, "False", "True")) %>% 
                 pull(ground_truth) %>% factor(levels=classes),
                 mode = "prec_recall")
-
