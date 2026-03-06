@@ -9,4 +9,4 @@
 module load scanpy/1.9.8-foss-2023a
 
 cd $PBS_O_WORKDIR
-python $VSC_DATA_VO_USER/visium-hd/visium_hd_brain/5_run_scrublet.py
+python $VSC_DATA_VO_USER/visium-hd/visium_hd_brain/5_3_run_scrublet.py

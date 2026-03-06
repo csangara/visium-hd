@@ -81,7 +81,6 @@ p_regions <- lapply(c("ffpe", "fresh_frozen"), function(ds){
     # rename fiber tracts/VS to ""
     mutate(division = ifelse(division == "fiber tracts/VS", "", division))
     
-  
   ggplot(region_annotations_rename, aes(x=x_axis, y=y_axis, fill=division)) +
     geom_bin2d(bins=100, linewidth=0,
                show.legend = ifelse(ds=="ffpe", TRUE, FALSE)) +
@@ -137,15 +136,6 @@ ggsave("visium_hd_brain_combined/plots/merfish_vs_visiumhd_region_annotations.pd
        plot = p_regions_all,
        width = 7, height = 5)
 
-ggplot(merfish_cells_section %>% filter(brain_section_label == sections_oi[1]),
-       aes(y=y_section, x=x_section, color=class)) +
-  geom_point(size=0.1) + scale_y_reverse() + coord_fixed(ratio=1) +
-  #geom_label(data=region_annot_label, aes(x=median_x, y=median_y, label=acronym_lvl5), size=5) +
-  scale_color_manual(values = celltype_colors) +
-  coord_fixed() +
-  theme_classic() +
-  theme(legend.position = "bottom",
-        axis.title = element_blank())
 
 merfish_cells_filtered <- merfish_cells %>% 
   filter(division %in% common_regions) %>%
@@ -288,24 +278,12 @@ ggsave("visium_hd_brain_combined/plots/deconv_vs_merfish_boxplot_celltypes_ctxpa
        width = 7.25, height = 5)
 
 
-
-deconv_props_region_df$division %>% table(useNA = "ifany")
-
-# combined_props_summ <- bind_rows(deconv_props_summ %>% rename(region = division),
-#           merfish_cells_summ %>%
-#             rename(celltype = class,
-#                    proportion = prop,
-#                    source = brain_section_label))
-# 
-# # Stacked barplot per region
-# ggplot(combined_props_summ, aes(x = source, y = proportion, fill = celltype)) +
-#   geom_bar(stat = "identity", width=0.6) +
-#   theme_minimal(base_size = 8) +
-#   scale_fill_manual(values = celltype_colors) +
-#   scale_y_continuous(expand = expansion(mult = c(0.02, 0.02))) +
-#   facet_grid(~region, scales = "free_x", space='free') +
-#   theme(axis.title = element_blank(),
-#         panel.grid.major.x = element_blank())
+#### CALCULATE FPR ####
+deconv_props_count <- deconv_props_df %>% filter(proportion > 0) %>% 
+  left_join(region_annotations_df %>% 
+              select(barcode, division, source),
+            by = c("spot" = "barcode", "source")) %>% 
+  count(division, source, celltype)
 
 # Calculate FPR for each region
 fprs <- merfish_cells_summ %>% distinct(region, class, source) %>% 
@@ -336,14 +314,10 @@ fprs <- merfish_cells_summ %>% distinct(region, class, source) %>%
 fprs
 # Save as csv
 write.csv(fprs,
-          file = "visium_hd_brain_combined/rds/deconv_fpr_per_region.csv",
+          file = "visium_hd_brain_combined/deconv_fpr_per_region.csv",
           row.names = FALSE, quote=FALSE)
 
 fprs %>% select(region, ffpe) %>% filter(region != "PAL") %>% pull(ffpe) %>% mean
 fprs %>% select(region, fresh_frozen) %>% filter(region != "CTXsp") %>% pull(fresh_frozen) %>% mean
 
-deconv_props_count <- deconv_props_df %>% filter(proportion > 0) %>% 
-  left_join(region_annotations_df %>% 
-              select(barcode, division, source),
-            by = c("spot" = "barcode", "source")) %>% 
-  count(division, source, celltype)
+

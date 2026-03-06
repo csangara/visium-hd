@@ -8,4 +8,4 @@
 cd $PBS_O_WORKDIR
 module unload Nextflow
 module load Nextflow
-nextflow run $VSC_DATA_VO_USER/spotless-benchmark/main.nf -profile hpc -c $VSC_DATA_VO_USER/visium-hd/visium_hd_brain/5_run_cell2location.config -ansi-log false
+nextflow run $VSC_DATA_VO_USER/spotless-benchmark/main.nf -profile hpc -c $VSC_DATA_VO_USER/visium-hd/visium_hd_brain/5_1_run_cell2location.config -ansi-log false
