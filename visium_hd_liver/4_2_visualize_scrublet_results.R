@@ -20,19 +20,14 @@ doublet <- doublet %>% mutate(predicted_doublet = case_when(
 classes_colors <- c("False"="forestgreen", "True"="navyblue")
 visium_obj$spot_class <- doublet$predicted_doublet
 
-# # Highlight spots with no prediction
-# no_prediction_cells <- doublet %>% filter(is.na(doublet_score)) %>% pull(spot_id)
-# SpatialDimPlot(visium_obj,
-#                cells.highlight = no_prediction_cells,
-#                image.alpha=0)
-
-p_spot_class <- SpatialDimPlot(visium_obj %>% .[, .$spot_class != ""],
+p_spot_class <- SpatialDimPlot(visium_obj,
                                group.by = "spot_class",
                                image.alpha = 0, stroke=NA) +
   scale_fill_manual(values = classes_colors, labels = c("Singlet", "Doublet")) +
-  xlim(orig_xlim) + ylim(orig_ylim) +
+  #xlim(orig_xlim) + ylim(orig_ylim) +
   guides(fill = guide_legend(override.aes = list(size = 3))) +
   theme(legend.position = "right",
         legend.title = element_blank())
 ggsave(paste0("visium_hd_liver/plots/spatialdimplot_scrublet_doublet.png"),
+       p_spot_class,
        width = 8, height = 6, bg = "white")

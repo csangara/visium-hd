@@ -1,0 +1,16 @@
+#!/bin/bash -l
+#PBS -l nodes=1:ppn=1
+#PBS -l mem=120gb
+#PBS -l walltime=00:30:00
+#PBS -m abe
+#PBS -e logs/
+#PBS -o logs/
+
+cd $PBS_O_WORKDIR
+conda activate harpy
+python 5_2_score_genes.py markers_mouseStStAll_onehot_all.csv
+
+# Run three times in total with these files:
+# markers_mouseStStAll_onehot_q50.csv
+# markers_mouseStStAll_onehot_q90.csv
+# markers_mouseStStAll_onehot_all.csv
