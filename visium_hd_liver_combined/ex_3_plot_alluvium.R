@@ -30,11 +30,9 @@ ggplot(scores_combi,
   geom_label(stat = "stratum", aes(label = after_stat(stratum))) +
   theme_void()
 
-
 is_alluvia_form(scores_combi, axes = 1:3, silent = TRUE)
 
 scores_lodes <- to_lodes_form(scores_combi, axes = 1:3)
-
 ggplot(scores_lodes,
        aes(y = value, alluvium=alluvium, x=x, stratum=stratum,
            fill=stratum)) +
@@ -43,10 +41,9 @@ ggplot(scores_lodes,
   geom_label(stat = "stratum", aes(label = after_stat(stratum))) +
   theme_void()
 
-p <- plot_alluvial(scores_wide, graphing_columns = c("all", "q50", "q90"), sorting_algorithm = "neighbornet",
-                   default_sorting = "decreasing", coloring_algorithm = "left",
-                   color_bands = FALSE, verbose = TRUE,
-                   min_text = 0.01, save_height = 24, save_width = 24, text_size = 35,
-                   axis_text_size = 25, axis_text_vjust = -5, text_width = 0.5,
-                   output_plot_path = file.path("visium_hd_liver_combined/plots/test_alluvium.pdf"))
-p
+library(wompwomp)
+plot_alluvial(scores_wide, graphing_columns = c("all", "q50", "q90"), sorting_algorithm = "neighbornet",
+              default_sorting = "decreasing", coloring_algorithm = "left",
+              color_bands = FALSE, verbose = TRUE,
+              min_text = 0.01, save_height = 24, save_width = 24, text_size = 35,
+              axis_text_size = 25, axis_text_vjust = -5, text_width = 0.5)

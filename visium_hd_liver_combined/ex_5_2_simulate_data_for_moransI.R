@@ -3,9 +3,14 @@ library(sf)
 library(spdep)
 library(tidyverse)
 
+# In this script, we want to see if Moran's I can be used to measure the 'spread' of cells
+# This is because in segmented data (Vizgen), cells are clearly seen clustered together even
+# when they have been artificially binned
+# But in VisiumHD data, we see that marker genes are spread far apart
+
+#### Helper functions ####
 create_convex_blobs <- function(nobs=100, centers=5, sd=1, bbox=c(0,100), do.plot=TRUE, seed=123) {
   set.seed(seed)
-  
   sim <- data.gen.blobs(
     nobs = nobs,
     features = 2,
@@ -44,7 +49,6 @@ create_circles <- function(nobs=100, radius=5, bbox=c(0,100), do.plot=TRUE, seed
   if (do.plot) {
     plot(sim_points)
   }
-  
   return(sim_points)
 }
 
@@ -73,13 +77,15 @@ create_grid_lw <- function(points, cellsize=c(8,8), bbox_range=c(0,100), do.plot
   return(list(grid=sim_grid, lw=lw_sim, nb=sim_nb))
 }
 
+## Simulate Vizgen data - blobs = cells
 # Create convex blobs  
 vizgen_sim_points <- create_convex_blobs(nobs=1000, centers=10, sd=8, bbox=c(0,1000), do.plot=TRUE)$convex_hulls %>% 
   rename(point_id=cluster)
   
-# Create circles
-vizgen_sim_points <- create_circles(nobs=10, radius=8, bbox=c(0,1000), do.plot=TRUE)
+# If creating circle instead
+# vizgen_sim_points <- create_circles(nobs=10, radius=8, bbox=c(0,1000), do.plot=TRUE)
 
+# Create artificial grid
 grid_lw <- create_grid_lw(vizgen_sim_points, cellsize=c(8,8), bbox_range=c(0,1000), do.plot=TRUE)
 
 # Get overlapping areas of points and grid
@@ -95,16 +101,16 @@ vizgen_intersect_merge <- vizgen_intersect %>% st_set_geometry(NULL) %>%
             by=c("grid_id", "point_id")) %>% 
   mutate(area = st_area(geometry),
          area_ratio = area / 64)
-  
+
+# Calculate Moran's I
 vizgen_I <- moran.test(vizgen_intersect_merge$area_ratio,
                        grid_lw$lw, alternative="greater") 
-vizgen_I
+vizgen_I #0.4
 
-# Do the same with VisiumHD simulated data
+## Simulate VisiumHD data -> bigger points
 vishd_sim_points <- create_convex_blobs(nobs=1000, centers=10, sd=32, bbox=c(0,1000), do.plot=TRUE)$convex_hulls %>% 
   rename(point_id=cluster)
 vishd_grid_lw <- create_grid_lw(vishd_sim_points, cellsize=c(8,8), bbox_range=c(0,1000), do.plot=TRUE)
-
 
 # Get overlapping areas of points and grid
 vishd_intersect <- st_join(vishd_grid_lw$grid,
@@ -125,6 +131,7 @@ vishd_intersect_merge <- vishd_intersect %>% st_set_geometry(NULL) %>%
 
 vishd_I <- moran.test(vishd_intersect_merge$area,
                       vishd_grid_lw$lw, alternative="greater") 
-vishd_I
+vishd_I #0.8
 
-# = Moran's I is not a good metric for this!!
+# VisiumHD has a higher autocorrelation, because of the bigger area
+# So Moran's I is not a good metric to measure gene 'spread'

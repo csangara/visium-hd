@@ -1,28 +1,8 @@
-library(Seurat)
-library(tidyverse)
-library(patchwork)
+source("visium_hd_liver_combined/0_utils.R")
 
-plot_path <- paste0("visium_hd_liver_combined/plots/")
-bin_sizes <- c(8, 16, 32)
+deconv_props_rank <- readRDS(paste0("visium_hd_liver_combined/rds/deconv_props_all_doubletmode.rds"))
 
-
-deconv_props_rank <- readRDS(paste0("visium_hd_liver_combined/rds/deconv_props_all.rds"))
-
-for (dataset_name in c("sca002", "caw009")){
-  dataset <- ifelse(dataset_name == "caw009", "_caw009", "")
-  data_path <- paste0("data/Visium_HD_Liver", toupper(dataset), "/")
-  proportions_path <- paste0("visium_hd_liver", dataset, "/Visium_HD_Liver", toupper(dataset))
-  
-  for (bin_size in bin_sizes){
-    gc()
-    bin_size_str <- sprintf("%03dum", bin_size)
-    
-    visium_obj <- readRDS(paste0(data_path, "Visium_HD_Liver", toupper(dataset), "_",
-                                 bin_size_str, ".rds"))
-  }
-}
-
-dataset_name <- "sca002"
+dataset_name <- "sca002" # sca002 or caw009
 dataset <- ifelse(dataset_name == "caw009", "_caw009", "")
 data_path <- paste0("data/Visium_HD_Liver", toupper(dataset), "/")
 proportions_path <- paste0("visium_hd_liver", dataset, "/Visium_HD_Liver", toupper(dataset))
@@ -33,7 +13,7 @@ visium_obj <- readRDS(paste0(data_path, "Visium_HD_Liver", toupper(dataset), "_"
 
 # We want to check correlation between markers and deconvolution results
 marker_genes <- read.csv("visium_hd_liver/MERSCOPE_marker_genes_onehot.csv")
-lfc <- read.csv("visium_hd_liver/final_MERscope_panel_Guilliams1.csv")
+lfc <- read.csv("data/liver_marker_genes/final_MERscope_panel_Guilliams1.csv")
 KC_markers <- marker_genes %>% 
   # row where KC column is 1
   filter(.[["KC"]] == 1) %>% select(Vizgen.Gene) %>% 
@@ -69,7 +49,7 @@ expr_df_KC <-  expr_df_KC %>%
 expr_df_KC$expression_bin
 
 # Plot genes
-p_genes <- ggplot(expr_df_KC) +
+ggplot(expr_df_KC) +
   geom_boxplot(aes(x = expression_bin, y = proportion)) +
   facet_wrap(~gene) +
   theme_minimal() +
@@ -77,6 +57,10 @@ p_genes <- ggplot(expr_df_KC) +
        x = "Gene expression",
        y = "Proportion")
 
-ggsave(paste0(plot_path, "deconv_props_vs_genes_", dataset_name, "_", bin_size_str, "_boxplot.pdf"),
-       p_genes, 
-       width = 10, height = 6, units = "in", dpi = 300)
+ggplot(expr_df_KC) +
+  geom_point(aes(x = expression, y = proportion)) +
+  facet_wrap(~gene) +
+  theme_minimal() +
+  labs(title = paste("Expression vs Proportion for", dataset_name, "bin size", bin_size_str),
+       x = "Gene expression",
+       y = "Proportion")

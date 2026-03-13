@@ -1,23 +1,9 @@
-library(Seurat)
-library(tidyverse)
-
-# bin_size <- 8 # 8, 16, or 32
-# 
-# # Fill the text with 0
-# bin_size_str <- sprintf("%03dum", bin_size)
-# 
-# visium_obj_sca <- readRDS(paste0(data_path_sca, "Visium_HD_Liver_",
-#                                  bin_size_str, ".rds"))
-# visium_obj_caw <- readRDS(paste0(data_path_caw, "Visium_HD_Liver_CAW009_",
-#                                  bin_size_str, ".rds"))
+# Supplementary Figure 4.3
+source("visium_hd_liver_combined/0_utils.R")
 
 data_path_sca <- paste0("data/Visium_HD_Liver/")
 data_path_caw <- paste0("data/Visium_HD_Liver_CAW009/")
 
-plot_path <- paste0("visium_hd_liver_combined/plots/")
-
-
-bin_sizes <- c(8, 16, 32)
 counts_features_df <- lapply(bin_sizes, function(bin_size) {
   bin_size_str <- sprintf("%03dum", bin_size)
   
@@ -59,7 +45,7 @@ means_df <-
 
 # Compare counts of the two datasets
 ggplot(counts_features_df, aes(x = x, fill=dataset)) +
-  geom_histogram(color="white", alpha=0.5, bins=50, position="identity", size=0.1) +
+  geom_histogram(color="white", alpha=0.5, bins=50, position="identity", linewidth=0.1) +
   geom_text(aes(x = text_x, y = text_y, color=dataset,
                 label = paste0("Mean: ", mean_x, "\nn = ", n)),
             data = means_df, vjust = 1, hjust=0, size=2,
@@ -79,8 +65,8 @@ ggplot(counts_features_df, aes(x = x, fill=dataset)) +
         legend.text = element_text(size = 6),
         axis.text = element_text(size = 6),
         axis.title = element_blank(),
-        strip.text = element_text(size = 6),
-        )
-ggsave(paste0(plot_path, "histograms_counts_features.pdf"), width = 8, height = 5)
+        strip.text = element_text(size = 6))
+
+ggsave(paste0(plot_path, "histogram_counts_features.pdf"), width = 8, height = 5)
 
 

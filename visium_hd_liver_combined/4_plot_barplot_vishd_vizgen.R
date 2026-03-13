@@ -1,61 +1,7 @@
-library(Seurat)
-library(tidyverse)
+source("visium_hd_liver_combined/0_utils.R")
 library(ggpattern)
-library(patchwork)
 
-color_palette <- c("Hepatocytes" = "#B4B5B5FF",
-                   "CentralVeinEndothelialcells" = "#FED8B1FF",
-                   "LSECs" = "#FBB05FFF",
-                   "PortalVeinEndothelialcells" = "#CC7722FF",
-                   "LymphaticEndothelialcells" = "#8F4716FF",
-                   "Cholangiocytes" = "#C61B84FF",
-                   "HsPCs" = "#F19FC3FF",
-                   "Stellatecells" = "#A31A2AFF",
-                   "Mesothelialcells" = "#D0110BFF",
-                   "Fibroblasts" = "#E45466FF",
-                   "CapsularFibroblasts" = "#D46F6CFF",
-                   "Kupffercells" = "#5DA6DBFF",
-                   "MonocytesMonocytederivedcells" = "#a3daf3",
-                   "cDC1s" = "#893A86FF",
-                   "cDC2s" = "#893A86FF",
-                   "pDCs" = "#893A86FF",
-                   "MigcDCs" = "#893A86FF",
-                   "Bcells" = "#9C7EBAFF",
-                   "NKcells" = "#4A6E34FF",
-                   "Tcells" = "#3AB04AFF",
-                   "ILC1s" = "#A3D7BAFF",
-                   "Basophils" = "#191919",
-                   "Neutrophils" = "#727272")
-color_palette_vizgen <- c("Hepatocytes" = "#B4B5B5FF",
-                          "Endothelialcells" = "#dca754",
-                          "Stromalcells" = "#79151e",
-                          "Kupffercells" = "#5DA6DBFF",
-                          "Otherimmunecells" = "#893A86FF",
-                          "Cholangiocytes" = "#C61B84FF",
-                          "Bcells" = "#9C7EBAFF",
-                          "Unknown" = "#191919")
-
-celltype_order <- names(color_palette)
-
-celltype_labeller <- function(celltype_str){
-  celltype_str %>% stringr::str_replace_all("Endothelialcells", "ECs") %>%
-    stringr::str_replace_all("MonocytesMonocytederivedcells", "Mono & Mono-derived cells") %>%
-    stringr::str_replace_all("([A-Za-z]+)(cells)$", "\\1 \\2") %>%
-    stringr::str_replace_all("([a-z]{2,})([A-Z])", "\\1 \\2")
-}
-
-add_space_celltype <- function(celltype_strs) {
-  celltype_strs %>%
-    # Add space before the word "cells"
-    stringr::str_replace_all("([A-Za-z]+)(cells)$", "\\1 \\2") %>%
-    # Add space before the word "immune"
-    stringr::str_replace_all("([A-Za-z]+)(immune)", "\\1 \\2")
-}
-
-plot_path <- paste0("visium_hd_liver_combined/plots/")
-first_run <- FALSE
-bin_sizes <- c(8, 16, 32)
-
+# Load in deconvolved and ground truth proportions
 deconv_props_rank <- readRDS(paste0("visium_hd_liver_combined/rds/deconv_props_all.rds"))
 deconv_props_8um <- deconv_props_rank %>% filter(bin_size=="008um")
 
@@ -81,24 +27,21 @@ vizgen_props_summ <- vizgen_props_8um %>%
   group_by(celltype, rank, doublet_type) %>%
   summarise(total_counts = n())
 
+# Combine proportions
 props_summ <- bind_rows(
   deconv_props_summ %>% mutate(source = "vishd"),
   vizgen_props_summ %>% mutate(dataset = "vizgen", source = "vizgen") %>% 
     mutate(celltype = gsub("\\.", "", celltype)) %>% 
-    mutate(celltype = gsub("Kuppfer", "Kupffer", celltype))
-) %>% mutate(annot_vizgen = case_when(grepl("Mesothelial|Stellate|VSMC|Fibroblasts", celltype) ~ "Stromalcells",
-                                                 grepl("Tcells|NKcells|Basophils|DC|Monocytes|ILC1s|Neutrophils|HsPCs", celltype) ~ "Otherimmunecells",
-                                                 grepl("Endothelialcells|ECs", celltype) ~ "Endothelialcells",
-                                                 # Others stay the same
-                                                 TRUE ~ celltype)) %>% 
-  # Sum by new annotation
-  group_by(annot_vizgen, dataset, rank, doublet_type) %>%
-  summarise(total_counts = sum(total_counts)) %>%
-  mutate(annot_vizgen = factor(annot_vizgen, levels = names(color_palette_vizgen)),
-         dataset = factor(dataset, levels = c("vizgen", "sca002", "caw009"), labels = c("Vizgen", "SCA002", "CAW009")),
-         doublet_type = factor(R.utils::capitalize(doublet_type), levels = c("Singlet", "Doublet")))
+    mutate(celltype = gsub("Kuppfer", "Kupffer", celltype))) %>%
+    group_annot_to_vizgen(celltype, "annot_vizgen") %>% 
+    # Sum by new annotation
+    group_by(annot_vizgen, dataset, rank, doublet_type) %>%
+    summarise(total_counts = sum(total_counts)) %>%
+    mutate(annot_vizgen = factor(annot_vizgen, levels = names(color_palette_vizgen)),
+           dataset = factor(dataset, levels = c("vizgen", "sca002", "caw009"), labels = c("Vizgen", "SCA002", "CAW009")),
+           doublet_type = factor(R.utils::capitalize(doublet_type), levels = c("Singlet", "Doublet")))
 
-# STATS
+# % Hepatocytes
 props_summ %>% filter(dataset == "Vizgen", annot_vizgen == "Hepatocytes", rank==1) %>% 
   mutate(prop_doublet = total_counts / sum(total_counts))
 
@@ -106,16 +49,14 @@ deconv_props_8um %>% ungroup %>% distinct(dataset, spot, doublet_type) %>%
   count(dataset, doublet_type) %>% 
   group_by(dataset) %>%
   mutate(prop = n / sum(n))
-  
 
+#### Figure 4.6 ####
+# Prepare extra lines for plotting
 singlet_threshold <- props_summ %>% filter(rank==1) %>%
   group_by(dataset) %>% summarise(threshold_counts=sum(total_counts)) %>% 
-  mutate(text = case_when(
-    dataset == "Vizgen" ~ "Total bins",
-    TRUE ~ ""
-    ),
-    rank = 1
-  )
+  mutate(text = case_when(dataset == "Vizgen" ~ "Total bins",
+                          TRUE ~ ""),
+         rank = 1)
 
 extra_lines <- props_summ %>% 
   group_by(dataset, annot_vizgen, rank) %>% 
@@ -126,10 +67,9 @@ extra_lines <- props_summ %>%
   mutate(y_pos = case_when(dataset != "Vizgen" ~ y_pos -1,
                            TRUE ~ y_pos))
 
-# Pattern fill is the color of color_palette vizgen and darker by 10\%
+# Pattern fill is the color of color_palette_vizgen and darker by 10%
 fill_pattern_color <- sapply(color_palette_vizgen, function(col) {
   col_rgb <- grDevices::col2rgb(col)
-  
   # For unknown, rgb = 25 each
   if (sum(col_rgb) > 100) {
     # Darker color
@@ -139,22 +79,19 @@ fill_pattern_color <- sapply(color_palette_vizgen, function(col) {
     new_rgb <- pmin(col_rgb + 50, 255)
   }
   grDevices::rgb(new_rgb[1], new_rgb[2], new_rgb[3], maxColorValue = 255)
-  
 }) %>% setNames(names(color_palette_vizgen))
 
-p_barplot <- 
-  ggplot(props_summ) +
+p_barplot <- ggplot(props_summ) +
     ggpattern::geom_col_pattern(aes(pattern=doublet_type,
                                     x=total_counts,
                                     y=forcats::fct_rev(annot_vizgen),
                                     fill=annot_vizgen,
                                     pattern_fill=annot_vizgen),
-                                width=1,
-                                pattern_density = 0.25,
-                                pattern_color = NA,
-                                pattern_angle = 40,
-                                position = position_stack(reverse = TRUE)
-                                ) +
+                                    width=1,
+                                    pattern_density = 0.25,
+                                    pattern_color = NA,
+                                    pattern_angle = 40,
+                                    position = position_stack(reverse = TRUE)) +
     geom_linerange(data = extra_lines,
                    aes(x=total_counts, ymin=y_pos-0.5,
                        ymax=y_pos+0.5,
@@ -168,10 +105,8 @@ p_barplot <-
               vjust=-1, angle=90, size=2, color="navyblue") +
     ggh4x::facet_grid2(dataset~rank, scales = "free", independent = "x",
                        labeller=labeller(rank = c("1" = "Primary cell type",
-                                         "2" = "Secondary cell type"))
-                       ) +
-    
-    scale_fill_manual(values = color_palette_vizgen, name = "Celltype",
+                                                  "2" = "Secondary cell type"))) +
+  scale_fill_manual(values = color_palette_vizgen, name = "Celltype",
                       labels=add_space_celltype, guide="none") +
     scale_pattern_manual(values=c("Singlet" = "stripe",
                                   "Doublet" = "none"),
@@ -188,41 +123,18 @@ p_barplot <-
                        labels = scales::label_number(scale_cut=scales::cut_short_scale()),
                        name="Number of spots") +
     theme_bw(base_size=8) +
-    theme(strip.background = element_blank(),
-          strip.text.y.right = element_blank(),
+    theme_barplot_facet +
+    theme(strip.text.y.right = element_blank(),
           strip.text.x.top = element_text(margin = margin(t = 0, r = 0, b = 5, l = 0), hjust=0),
-          panel.grid.major.y = element_blank(),
-          panel.border = ggh4x::element_part_rect(side = "lb", fill = NA, linewidth = 0.5),
           panel.spacing.x = unit(0.5, "cm"),
-          axis.title.y = element_blank(),
-          axis.title.x = element_text(size=6),
-          axis.ticks.y = element_blank(),
           axis.text.x = element_text(size=5),
-          axis.text.y = element_text(size=6),
-          plot.title = element_text(size=7, face="bold"),
-          #legend.box.margin = margin(t = 0, r = 0, b = 0, l = 5),
-          legend.key.size = unit(0.5, "cm"),
-          legend.title = element_text(size=6),
-          legend.text = element_text(size=6),
-          legend.position = "bottom",
-          legend.direction = "vertical")
-p_barplot
+          axis.text.y = element_text(size=6))
+          
 
 deconv_props_8um_vizgen <- deconv_props_8um %>% 
-  mutate(annot_vizgen = case_when(grepl("Mesothelial|Stellate|VSMC|Fibroblasts", celltype) ~ "Stromalcells",
-                                  grepl("Tcells|NKcells|Basophils|DC|Monocytes|ILC1s|Neutrophils|HsPCs", celltype) ~ "Otherimmunecells",
-                                  grepl("Endothelialcells|ECs", celltype) ~ "Endothelialcells",
-                                  # Others stay the same
-                                  TRUE ~ celltype)) %>% 
+  group_annot_to_vizgen(celltype, "annot_vizgen") %>% 
   group_by(annot_vizgen, dataset, spot) %>%
   summarise(sum_props = sum(proportion))
-  # ungroup() %>% 
-  # tidyr::complete(spot, annot_vizgen, dataset,
-  #                 fill = list(sum_props = 0))
-
-deconv_props_8um_vizgen %>% group_by(spot, dataset) %>% 
-  summarise(total = sum(sum_props)) %>% pull(total) %>%
-  table
 
 props_combined <- bind_rows(
   deconv_props_8um_vizgen,
@@ -237,7 +149,8 @@ props_combined <- bind_rows(
            annot_vizgen = celltype,
            sum_props = proportion) 
 ) %>%  mutate(annot_vizgen = factor(annot_vizgen, levels = rev(names(color_palette_vizgen))),
-              dataset = factor(dataset, levels = c("vizgen", "sca002", "caw009"), labels = c("Vizgen", "SCA002", "CAW009"))) %>% 
+              dataset = factor(dataset, levels = c("vizgen", "sca002", "caw009"),
+                               labels = c("Vizgen", "SCA002", "CAW009"))) %>% 
   group_by(dataset, annot_vizgen) %>%
   mutate(
     outlier_lwr = sum_props < quantile(sum_props, probs = 0.25) - IQR(sum_props) * 1.5,
@@ -266,13 +179,9 @@ p_boxplot <- ggplot(props_combined,
     scale_x_continuous(breaks = seq(0, 1, by=0.2),
                      name="Cell type proportion") +
     theme_bw(base_size=8) +
+    theme_barplot_facet +
     theme(strip.background = ggh4x::element_part_rect(side = "l", fill = NA, linewidth=0.5),
           strip.text.y.right = element_text(angle=0),
-          panel.grid.major.y = element_blank(),
-          panel.border = ggh4x::element_part_rect(side = "lb", fill = NA, linewidth = 0.5),
-          axis.title.y = element_blank(),
-          axis.title.x = element_text(size=6),
-          axis.ticks.y = element_blank(),
           axis.text.x = element_text(size=5),
           axis.text.y = element_blank(),
           plot.margin = margin(l=5)) 
@@ -282,29 +191,3 @@ p_combined <-  p_barplot + p_boxplot +
   plot_layout(widths = c(2, 1))
 ggsave(paste0(plot_path, "barplot_boxplot_vishd_vizgen_8um.pdf"),
        width = 8, height = 6, dpi=300)
-
-# Barplot of secondary cell type
-# ggplot(props_summ) +
-#   geom_col(aes(x=total_counts,
-#                y=forcats::fct_rev(annot_vizgen),
-#                fill=annot_vizgen),
-#            show.legend = FALSE) +
-#   ggh4x::facet_grid2(dataset~rank, scales = "free_x", independent = "x") +
-#   scale_fill_manual(values = color_palette_vizgen, name = "Celltype") +
-#   scale_x_continuous(expand = expansion(mult = c(0, 0.05)),
-#                      labels = scales::label_number(scale_cut=scales::cut_short_scale())) +
-#   scale_y_discrete(labels = add_space_celltype) +
-#   guides(fill = guide_legend(nrow=2)) +
-#   theme_bw(base_size=8) +
-#   theme(strip.background = element_blank(),
-#         #strip.text.x.top = element_blank(),
-#         panel.grid.major.y = element_blank(),
-#         panel.border = ggh4x::element_part_rect(side = "lb", fill = NA, linewidth = 0.5),
-#         axis.title.y = element_blank(),
-#         axis.title.x = element_blank(),
-#         axis.ticks.y = element_blank(),
-#         axis.text.x = element_text(size=5),
-#         axis.text.y = element_text(size=5))
-
-
-
