@@ -245,8 +245,8 @@ table(addNA(vishd_Gh))
 ct_stats <- list(vizgen_I=vizgen_Ih, vizgen_C=vizgen_Ch, vizgen_G=vizgen_Gh,
      vishd_I=vishd_Ih, vishd_C=vishd_Ch, vishd_G=vishd_Gh)
 
-# saveRDS(ct_stats, file="visium_hd_liver_combined/vizgen/local_stats_", ct, ".rds")
-ct_stats <- readRDS(file="visium_hd_liver_combined/vizgen/local_stats_Kupffercells.rds")
+# saveRDS(ct_stats, file="visium_hd_liver_combined/rds/local_stats_", ct, ".rds")
+ct_stats <- readRDS(file="visium_hd_liver_combined/rds/local_stats_Kupffercells.rds")
 
 for (i in 1:length(ct_stats)){
   print(names(ct_stats)[i])
@@ -335,8 +335,8 @@ morans_df <- lapply(genes, function(gene){
         gene=gene)
 }) %>% bind_rows()
 
-# saveRDS(morans_df, file="visium_hd_liver_combined/vizgen/moransI_KC_genes.rds")
-morans_df <- readRDS(file="visium_hd_liver_combined/vizgen/moransI_KC_genes.rds")
+# saveRDS(morans_df, file="visium_hd_liver_combined/rds/moransI_KC_genes.rds")
+morans_df <- readRDS(file="visium_hd_liver_combined/rds/moransI_KC_genes.rds")
 
 # Order gene by ascending difference between datasets
 gene_order <- morans_df %>% group_by(gene) %>% 
