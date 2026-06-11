@@ -1,4 +1,3 @@
-setwd("/home/chananchidas/topsecret/scripts/")
 library(SoupX)
 
 data.dir <- "../spaceranger/binned_outputs/square_008um/"
