@@ -1,44 +1,10 @@
-library(Seurat)
-library(tidyverse)
+source("visium_hd_liver_combined/0_utils.R")
 
 dataset <- "_caw009" #or "_caw009" or ""
 data_path <- paste0("data/Visium_HD_Liver", toupper(dataset), "/")
 proportions_path <- paste0("visiumify_55um/Visium_HD_Liver", toupper(dataset))
 plot_path <- paste0("visiumify_55um/plots/")
-
-color_palette <- c("Hepatocytes" = "#B4B5B5FF",
-                   "CentralVeinEndothelialcells" = "#FED8B1FF",
-                   "LSECs" = "#FBB05FFF",
-                   "PortalVeinEndothelialcells" = "#CC7722FF",
-                   "LymphaticEndothelialcells" = "#8F4716FF",
-                   "Cholangiocytes" = "#C61B84FF",
-                   "HsPCs" = "#F19FC3FF",
-                   "Stellatecells" = "#A31A2AFF",
-                   "Mesothelialcells" = "#D0110BFF",
-                   "Fibroblasts" = "#E45466FF",
-                   "CapsularFibroblasts" = "#D46F6CFF",
-                   "Kupffercells" = "#5DA6DBFF",
-                   "MonocytesMonocytederivedcells" = "#a3daf3",
-                   "cDC1s" = "#893A86FF",
-                   "cDC2s" = "#893A86FF",
-                   "pDCs" = "#893A86FF",
-                   "MigcDCs" = "#893A86FF",
-                   "Bcells" = "#9C7EBAFF",
-                   "NKcells" = "#4A6E34FF",
-                   "Tcells" = "#3AB04AFF",
-                   "ILC1s" = "#A3D7BAFF",
-                   "Basophils" = "#191919",
-                   "Neutrophils" = "#727272")
-
 celltype_order <- names(color_palette)
-
-celltype_labeller <- function(celltype_str){
-  celltype_str %>% stringr::str_replace_all("Endothelialcells", "ECs") %>%
-    stringr::str_replace_all("MonocytesMonocytederivedcells", "Mono & Mono-derived cells") %>%
-    stringr::str_replace_all("([A-Za-z]+)(cells)$", "\\1 \\2") %>%
-    stringr::str_replace_all("([a-z]{2,})([A-Z])", "\\1 \\2")
-}
-
 bin_size <- 56
 bin_size_str <- sprintf("%03dum", bin_size)
 
@@ -106,7 +72,7 @@ props_summ <- props_visld %>% group_by(celltype) %>%
   summarise(agg_proportion = mean(as.numeric(proportion))) %>% ungroup
 
 # Barplot of deconv_props_summ and props_summ
-bind_rows(deconv_props_summ %>% mutate(source = "VisiumHD_binned"),
+p_barplot <- bind_rows(deconv_props_summ %>% mutate(source = "VisiumHD_binned"),
           props_summ %>% mutate(source = "Visium")) %>%
   mutate(source = factor(source, levels = c("VisiumHD_binned", "Visium"))) %>% 
   ggplot(aes(y=reorder(celltype, agg_proportion), x=agg_proportion, fill=source)) +
@@ -120,26 +86,80 @@ bind_rows(deconv_props_summ %>% mutate(source = "VisiumHD_binned"),
                     labels=c("VisiumHD_binned"="VisiumHD\n(binned to 56\u03bcm)",
                              "Visium"="Visium (55\u03bcm)")) +
   labs(x="Mean Proportion") +
-  theme_bw(base_size = 8) +
-  theme(panel.grid.major.y = element_blank(),
-        panel.border = ggh4x::element_part_rect(side = "lb", fill = NA, linewidth = 0.25),
-        axis.ticks.y = element_blank(),
-        axis.ticks.x = element_line(linewidth=0.25),
-        axis.text.x = element_text(size=6),
-        axis.text.y = element_text(size=6),
+  theme_classic(base_size = 7) +
+  theme(panel.grid.major.x = element_line(),
+        panel.grid.minor.x = element_line(),
         axis.title.y = element_blank(),
         axis.title.x = element_text(size=6),
         legend.box.margin = margin(t = 0, r = 0, b = 0, l = 5),
         legend.background = element_rect(fill = "white", color="black", linewidth=0.1),
         legend.position = "inside",
-        legend.position.inside = c(0.85,0.1),
-        legend.key.size = unit(0.4, "cm"),
-        legend.title = element_text(size=5),
-        legend.text = element_text(size=5))
+        legend.position.inside = c(0.85,0.25),
+        legend.key.size = unit(0.4, "cm"))
+p_barplot
+
 ggsave(paste0(plot_path, "barplot_proportions_VisiumHD_binned_vs_Visium.pdf"),
+       p_barplot,
        device = cairo_pdf,
        width=4.5, height=4, dpi=300)
 
+# Counts and feature plots
+visiumify_counts <- bind_rows(
+  data.frame(x = visium_obj[["nCount_RNA", drop=TRUE]],
+             dataset = "VisiumHD_binned", id = "CAW009", type = "Count"),
+  data.frame(x = visium_obj[["nFeature_RNA", drop=TRUE]],
+             dataset = "VisiumHD_binned", id = "CAW009", type = "Feature"))
+
+visium_counts <- lapply(1:4, function(i) {
+  visium_obj <- readRDS(paste0("~/spotless-benchmark/data/rds/liver_mouseVisium_JB0", i, ".rds"))
+  
+  bind_rows(data.frame(x = visium_obj[["nCount_Spatial", drop=TRUE]],
+                       dataset = "Visium", id = paste0("JB0", i), type = "Count"),
+            data.frame(x = visium_obj[["nFeature_Spatial", drop=TRUE]], 
+                       dataset = "Visium", id = paste0("JB0", i), type = "Feature"))
+}) %>% bind_rows
+
+counts_features_df <- bind_rows(visiumify_counts, visium_counts)%>% 
+  mutate(dataset = factor(dataset, levels = c("VisiumHD_binned", "Visium")))
+
+# If Visium became 8um, how many counts would they have
+counts_features_df %>% filter(dataset == "Visium", type == "Count") %>% 
+  summarise(mean = mean(x)) %>% pull(mean)
+29539.89/((55/8)**2)
+# 76606.18/((56/8)**2)
+
+# Compare counts of the two datasets
+p_counts_features <- ggplot(counts_features_df, aes(x = id, y=x)) +
+  geom_violin(aes(fill=dataset), linewidth = 0.25) +
+  geom_boxplot(width=0.1, linewidth = 0.25, outliers = FALSE) +
+  facet_wrap(~type, scales = "free",
+             labeller = labeller( .multi_line=FALSE)) +
+  scale_fill_manual(values=c("Visium"="#ff7f0e", "VisiumHD_binned"="#1f77b4"),
+                    limits=c("Visium", "VisiumHD_binned"),
+                    name="Dataset",
+                    labels=c("VisiumHD_binned"="VisiumHD\n(binned to 56\u03bcm)",
+                             "Visium"="Visium (55\u03bcm)")) +
+  # Use scientific notation for y
+  scale_x_discrete(limits = c(paste0("JB0", 1:4), "CAW009")) +
+  scale_y_continuous(labels = scales::comma) +
+  guides(fill = guide_legend(override.aes = list(color = NA))) +
+  theme_classic(base_size = 7) +
+  theme(legend.position = "bottom",
+        # Add right spacing to legend title
+        legend.title = element_text(margin = margin(r = 15)),
+        axis.title = element_blank(),
+        legend.key.size = unit(0.5, "cm"))
+p_counts_features
+
+p_both <- p_barplot / p_counts_features +
+  plot_layout(heights = c(1.3, 1)) +
+  plot_annotation(tag_levels = "a", tag_prefix = "(", tag_suffix = ")") &
+  theme(plot.tag = element_text(face = "bold"))
+p_both
+
+ggsave("visiumify_55um/plots/visiumify_barplot_violin.pdf", p_both,
+       device = cairo_pdf,
+       width = 150, height = 150, units = "mm")
 # Nuc seq ground truth
 # Filter out ABU21 (enriched for liver capsule)
 # Also get coarser annotations

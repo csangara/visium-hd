@@ -13,8 +13,7 @@ visium_obj <- SeuratObject::RenameAssays(visium_obj, assay.name = "RNA", new.ass
 # Rename cells
 visium_obj <- RenameCells(visium_obj, new.names = visium_obj$cell_ID)
 
-# For resolutions given by SpaceRanger, we can juse use this function
-
+# For resolutions given by SpaceRanger, we can use use this function
 # img <- Read10X_Image("data/Visium_HD_Liver/binned_outputs/square_016um/spatial",
 #                      assay = "Spatial.016um",
 #                      slice = "slice1.016um")
