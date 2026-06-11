@@ -6,12 +6,12 @@ library(precrec)
 
 repl <- 2
 # Analyze downsampling results
-doublet_info <- read.csv(paste0("UMI_downsampling/brain_cortex_generation_real/scrublet_brain_cortex_generation_real_rep",
+doublet_info <- read.csv(paste0("UMI_downsampling_brain/brain_cortex_generation_real/scrublet_brain_cortex_generation_real_rep",
                                   repl, ".csv"), header = TRUE) %>% 
   rename(spot=X) %>% 
   filter(!is.na(doublet_score))
 
-synth_obj <- readRDS(paste0("data/MouseBrain_UMI_downsampling/brain_cortex_generation_real_rep", repl, ".rds"))
+synth_obj <- readRDS(paste0("UMI_downsampling_brain/synthetic_data/brain_cortex_generation_real_rep", repl, ".rds"))
 
 # Get ground truth singlet and doublet
 ground_truth_class <- synth_obj$spot_composition %>% 
@@ -29,17 +29,21 @@ ggplot(doublet_info, aes(x=doublet_score)) +
   geom_histogram() +
   geom_vline(xintercept = 0.18, color="red", linetype="dashed") +
   theme_classic()
-ggsave("UMI_downsampling/plots/histogram_scrublet_doublet_score.png", width=8, height=5)
+ggsave("UMI_downsampling_brain/plots/histogram_scrublet_doublet_score.png", width=8, height=5)
 
+
+threshold <- quantile(doublet_info$doublet_score, 0.5)
 # Find a doublet_score threshold that predicts 70% of data as singlet
 doublet_info %>% 
-  mutate(predicted_doublet = ifelse(doublet_score > 0.7, "TRUE", "FALSE")) %>% 
+  mutate(predicted_doublet = ifelse(doublet_score > threshold, "TRUE", "FALSE")) %>% 
   pull(predicted_doublet) %>% table %>% 
   prop.table
 
+
+
 # Overwrite predicted_doublet column using 0.5 as threshold
 doublet_info <- doublet_info %>% 
-  mutate(predicted_doublet = ifelse(doublet_score > 0.7, "TRUE", "FALSE"))
+  mutate(predicted_doublet = ifelse(doublet_score > threshold, "TRUE", "FALSE"))
 
 classes <- c("TRUE", "FALSE")
 confusionMatrix(doublet_info$predicted_doublet %>% factor(levels=classes),
@@ -103,7 +107,7 @@ ggplot(acc_df, aes(x=bins, y=Accuracy, group=1)) +
   labs(x = "UMI Counts Per Spot", y="Accuracy of spot class prediction", size="# spots in bin") +
   theme(legend.position.inside=c(0.15, 0.9),
         legend.position="inside")
-ggsave("UMI_downsampling/plots/scrublet_spotclass_accuracy_per_bin.png", width=8, height=8)
+ggsave("UMI_downsampling_brain/plots/scrublet_spotclass_accuracy_per_bin.png", width=8, height=8)
 
 ggplot(class_metrics_df %>% filter(metric=="F1"),
        aes(x=bins, y=value, group=1)) +
@@ -117,7 +121,7 @@ ggplot(class_metrics_df %>% filter(metric=="F1"),
   labs(x = "UMI Counts Per Spot", y="F1 Score", color="Predicted spot class") +
   theme(legend.position.inside=c(0.15, 0.9),
         legend.position="inside")
-ggsave("UMI_downsampling/plots/scrublet_spotclass_F1_per_bin.png", width=8, height=8)
+ggsave("UMI_downsampling_brain/plots/scrublet_spotclass_F1_per_bin.png", width=8, height=8)
 
 
 conf_matrices_df <-  purrr::map(conf_matrices, "table") %>% 
@@ -149,7 +153,7 @@ p_conf_mat <- ggplot(conf_matrices_df, aes(x=Reference, y=Prediction, fill=Freq)
 
 p_conf_mat_tab <- ggplotGrob(p_conf_mat)
 
-ggsave("UMI_downsampling/plots/scrublet_spotclass_confusion_matrix_per_bin.png", 
+ggsave("UMI_downsampling_brain/plots/scrublet_spotclass_confusion_matrix_per_bin.png", 
        # Filter out top axes 2-21 (only keep the first one)
        plot=grid::grid.draw(gtable::gtable_filter(p_conf_mat_tab, "axis-t-([2-9]|1[0-9]|2[0-1])", invert=TRUE)),
        width=20, height=3, bg="white")
@@ -165,7 +169,7 @@ ggplot(doublet_info_bins, aes(x=doublet_score, y=forcats::fct_rev(counts_bin))) 
   geom_density_ridges() +
   labs(y="UMI Counts Per Spot", x="Doublet Score") +
   theme_classic()
-ggsave("UMI_downsampling/plots/scrublet_doublet_score_per_bin.png", width=6, height=5)
+ggsave("UMI_downsampling_brain/plots/scrublet_doublet_score_per_bin.png", width=6, height=5)
 
 # Stacked bar plot
 ggplot(doublet_info_bins, aes(y=forcats::fct_rev(counts_bin), fill=factor(predicted_doublet, levels=classes))) +
@@ -177,7 +181,7 @@ ggplot(doublet_info_bins, aes(y=forcats::fct_rev(counts_bin), fill=factor(predic
                     labels=bin_names_right[c(1, 5, 10, 15, 20, 21)]) +
   theme_classic() +
   labs(y = "UMI Counts Per Spot", x="Proportion of spots", fill="Predicted spot class")
-ggsave("UMI_downsampling/plots/scrublet_spotclass_proportion_per_bin.png", width=8, height=5)
+ggsave("UMI_downsampling_brain/plots/scrublet_spotclass_proportion_per_bin.png", width=8, height=5)
 
 # Get AUPR per bin
 gt_binary_bins <- gt_counts_df %>% select(spot, counts_bin, n_cells) %>% 
@@ -207,4 +211,4 @@ ggplot(prc, aes(x=factor(dsids), y=aucs)) +
   labs(x = "UMI Counts Per Spot", y="Doublet classification AUPR") +
   theme_classic()
 
-ggsave("UMI_downsampling/plots/scrublet_doublet_AUPR_per_bin.png", width=8, height=6)
+ggsave("UMI_downsampling_brain/plots/scrublet_doublet_AUPR_per_bin.png", width=8, height=6)

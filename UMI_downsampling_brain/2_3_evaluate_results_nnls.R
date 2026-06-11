@@ -6,10 +6,10 @@ library(precrec)
 
 repl <- 1
 # Analyze downsampling results
-doublet_props <- read.table(paste0("UMI_downsampling/brain_cortex_generation_real/proportions_nnls_brain_cortex_generation_real_rep",
+doublet_props <- read.table(paste0("UMI_downsampling_brain/brain_cortex_generation_real/proportions_nnls_brain_cortex_generation_real_rep",
                                    repl), header = TRUE)
 
-synth_obj <- readRDS(paste0("data/MouseBrain_UMI_downsampling/brain_cortex_generation_real_rep", repl, ".rds"))
+synth_obj <- readRDS(paste0("UMI_downsampling_brain_synthetic_data/brain_cortex_generation_real_rep", repl, ".rds"))
 ground_truth <- synth_obj$relative_spot_composition
 
 ground_truth %>% dim # 11266
@@ -78,6 +78,6 @@ ggplot(prc, aes(x=factor(dsids), y=aucs)) +
   ylim(c(0,1)) +
   labs(x = "UMI Counts Per Spot", y="Cell type prediction AUPR") +
   theme_classic()
-ggsave("UMI_downsampling/plots/celltype_AUPR_per_bin.png", width=8, height=8)
+ggsave("UMI_downsampling_brain/plots/nnls_celltype_AUPR_per_bin.png", width=8, height=8)
 
 
