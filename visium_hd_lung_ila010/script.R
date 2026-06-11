@@ -125,12 +125,6 @@ pheatmap::pheatmap(cooccurrence, color = RColorBrewer::brewer.pal(9, "Blues"),
                    cluster_rows = FALSE, cluster_cols = FALSE,
                    filename = paste0(plot_path, "cooccurrence_heatmap_", bin_size_str, ".pdf"))
 
-# Subset
-cooccurrence[c("B cells", "GC B cells", "ASCs"),] %>% 
-  pheatmap::pheatmap(color = RColorBrewer::brewer.pal(9, "Blues"),
-                     cluster_rows = FALSE, cluster_cols = FALSE,
-                     filename = paste0(plot_path, "cooccurrence_heatmap_subset_", bin_size_str, ".pdf"),
-                     height = 2)
 
 #### DECONVOLUTION BARPLOT ####
 proportions_path <- paste0("visium_hd_lung_ila010/Visium_HD_Lung_ILA010_")
@@ -249,10 +243,7 @@ p_feature_props <- lapply(names(props_vec), function(props_name){
     # scale_color_viridis_c(limits=c(0,1)) +
     scale_color_gradientn(colors = rev(RColorBrewer::brewer.pal(11, "RdYlBu")[2:10]),
                           limits=c(0,1)) +
-    # scale_color_gradientn(colors = rev(c("#FF0000", "#CC0033", "#990066", "#660099", "#3300CC", "#0000FF")),
-    #                         limits=c(0,1)) +
-    # scale_color_gradient2(low="blue", high="red",midpoint=0.5,
-    #                       mid="#660099", limits=c(0,1))+
+
     ggtitle(paste0(proper_celltype_names[props_vec[props_name]], " proportions")) +
     theme_classic(base_size=8) +
     theme(plot.title = element_text(hjust = 0.5, size=8, face="bold"),
@@ -481,7 +472,6 @@ for (ct_pair in ct_pairs_oi){
 }
 
 #### DISTANCE TO NEAREST PLASMA CELL ####
-
 square_size <- visium_obj@images[[paste0("slice1.", bin_size_str)]]@scale.factors$spot
 
 interactions_oi <- list(
