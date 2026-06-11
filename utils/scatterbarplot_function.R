@@ -31,7 +31,7 @@ plot_scatterbar <- function(deconv_props,
                           values_to = "proportion") %>% 
       dplyr::filter(proportion > 0) %>% 
       # Add coordinates
-      dplyr::right_join(Seurat::GetTissueCoordinates(visium_obj_roi),
+      dplyr::inner_join(Seurat::GetTissueCoordinates(visium_obj_roi),
                         by = c("spot" = "cell"))
   } else {
     deconv_props_df <- deconv_props

@@ -1,6 +1,6 @@
 library(Seurat)
 library(tidyverse)
-source("scripts/scatterbarplot_function.R")
+source("utils/scatterbarplot_function.R")
 
 dataset <- "_caw009" #or "_caw009" or ""
 data_path <- paste0("data/Visium_HD_Liver", toupper(dataset), "/")

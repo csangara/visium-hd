@@ -1,5 +1,5 @@
 source("visium_hd_liver_combined/0_utils.R")
-source("scripts/scatterbarplot_function.R")
+source("utils/scatterbarplot_function.R")
 
 first_run <- FALSE
 rois <- list("caw009" = c(6600, 7100, 7200, 8200), # roi1

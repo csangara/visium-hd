@@ -1,6 +1,6 @@
 use_color_palette <- "" # Use Karen's or my color palette
 source("visium_hd_lung_ila010/0_utils.R")
-source("scripts/scatterbarplot_function.R")
+source("utils/scatterbarplot_function.R")
 bin_size <- 8
 bin_size_str <- sprintf("%03dum", bin_size)
 

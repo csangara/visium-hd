@@ -1,5 +1,5 @@
 source("visium_hd_liver_combined/0_utils.R")
-source("scripts/scatterbarplot_function.R")
+source("utils/scatterbarplot_function.R")
 
 # Broader annotation
 color_palette <- c("Hepatocytes" = "#B4B5B5FF",

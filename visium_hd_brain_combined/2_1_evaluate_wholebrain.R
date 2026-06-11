@@ -1,7 +1,7 @@
 library(tidyverse)
 library(Seurat)
 source("visium_hd_brain_combined/0_brain_init.R")
-source("scripts/scatterbarplot_function.R")
+source("utils/scatterbarplot_function.R")
 
 # Read RCTD files
 deconv_props_list <- list()

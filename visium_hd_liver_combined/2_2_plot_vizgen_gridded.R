@@ -1,6 +1,6 @@
 library(spdep)
 library(sf)
-source("scripts/scatterbarplot_function.R")
+source("utils/scatterbarplot_function.R")
 source("visium_hd_liver_combined/0_utils.R")
 
 bin_sizes <- c(2, 4, 8, 16, 32)
