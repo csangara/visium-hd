@@ -1,0 +1,20 @@
+#!/bin/bash -l
+#PBS -l nodes=1:ppn=6
+#PBS -l walltime=30:00:00
+#PBS -l mem=80gb
+#PBS -e logs/
+#PBS -o logs/
+
+cd $PBS_O_WORKDIR
+
+#### CHANGE VALUES HERE ####
+PATH_TO_SINGLECELL_SEURAT_OBJECT="/data/gent/vo/000/gvo00070/vsc43831/spatial_datasets/ABA_data/WMB-10Xv3_subset_10000x86810.rds"
+PATH_TO_VISIUMHD="/data/gent/vo/000/gvo00070/vsc43831/spatial_datasets/Visium_HD_MouseBrain/Visium_HD_MouseBrain_016um_6951x7318.rds"
+ANNOTATION_COLUMN_IN_SINGLECELL_OBJECT="subclass"
+############################
+
+Rscript runRCTD.R \
+        --sc_input $PATH_TO_SINGLECELL_SEURAT_OBJECT \
+        --sp_input $PATH_TO_VISIUMHD \
+        --annot $ANNOTATION_COLUMN_IN_SINGLECELL_OBJECT
+        
