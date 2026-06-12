@@ -39,4 +39,6 @@ File conversion between Seurat and AnnData is always a bit tricky. I used a mix 
 
 Many `.pbs` files are also provided in this repo that can be submitted via the UGent HPC simply by using `qsub filename.pbs`. I usually just submit it via the default cluster (doduo). I also created an conda environment on the HPC that has SpatialData and SPArrOW installed in order to run some steps of the analysis.
 
-### Datasets
+## Datasets
+
+Please refer to the methods section of the thesis to get more details on the datasets.
