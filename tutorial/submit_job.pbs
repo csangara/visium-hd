@@ -5,6 +5,7 @@
 #PBS -e logs/
 #PBS -o logs/
 
+module load Seurat/5.1.0-foss-2023a-R-4.3.2
 cd $PBS_O_WORKDIR
 
 #### CHANGE VALUES HERE ####
