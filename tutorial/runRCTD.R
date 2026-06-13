@@ -93,7 +93,9 @@ RCTD_deconv <- run.RCTD(RCTD_deconv, doublet_mode = "doublet")
 cat("Printing results...\n")
 
 #### 4.1. OUTPUT DOUBLET LABELS AND LIKELIHOOD SCORE ####
-write.table(RCTD_deconv@results$results_df %>% tibble::rownames_to_column("spot"),
+write.table(RCTD_deconv@results$results_df %>%
+              tibble::rownames_to_column("spot") %>% 
+              rename(second_type = scond_type),
             file=file.path(output_dir, filename_doublet_info),
             sep="\t", quote=FALSE, row.names=FALSE)
 
@@ -105,13 +107,14 @@ weights_doublet <- RCTD_deconv@results$weights_doublet %>%
 
 # Get doublet labels
 labels_df <- RCTD_deconv@results$results_df %>%
-  select(spot_class, first_type, scond_type) %>% 
+  select(spot_class, first_type, scond_type) %>%
+  rename(second_type = scond_type) %>% 
   tibble::rownames_to_column("spot") %>% 
   tidyr::pivot_longer(-c(spot, spot_class), names_to="type", values_to="label")
 
 deconv_matrix <- dplyr::left_join(weights_doublet, labels_df, by=c("spot", "type")) %>% 
   # Filter out second_type if the spot is classified as a singlet
-  dplyr::filter(!(type == "scond_type" & spot_class == "singlet")) %>% 
+  dplyr::filter(!(type == "second_type" & spot_class == "singlet")) %>% 
   # Replace proportions with 1 if singlet
   dplyr::mutate(proportion = replace(proportion, spot_class == "singlet", 1)) %>% 
   tidyr::pivot_wider(id_cols = spot, names_from="label", values_from="proportion", values_fill = 0) %>% 
