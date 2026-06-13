@@ -98,13 +98,13 @@ weights_doublet <- RCTD_deconv@results$weights_doublet %>%
 
 # Get doublet labels
 labels_df <- RCTD_deconv@results$results_df %>%
-  select(spot_class, first_type, second_type) %>% 
+  select(spot_class, first_type, scond_type) %>% 
   tibble::rownames_to_column("spot") %>% 
   tidyr::pivot_longer(-c(spot, spot_class), names_to="type", values_to="label")
 
 deconv_matrix <- dplyr::left_join(weights_doublet, labels_df, by=c("spot", "type")) %>% 
   # Filter out second_type if the spot is classified as a singlet
-  dplyr::filter(!(type == "second_type" & spot_class == "singlet")) %>% 
+  dplyr::filter(!(type == "scond_type" & spot_class == "singlet")) %>% 
   # Replace proportions with 1 if singlet
   dplyr::mutate(proportion = replace(proportion, spot_class == "singlet", 1)) %>% 
   tidyr::pivot_wider(id_cols = spot, names_from="label", values_from="proportion", values_fill = 0) %>% 
@@ -117,16 +117,15 @@ if (nrow(deconv_matrix) != ncol(spatial_data)){
 }
 
 # Check for missing cell types
-if (user_args$doublet_mode %in% c("doublet", "multi")){
-  celltypes <- RCTD_deconv@cell_type_info$info[[2]]
-  if (!all(celltypes %in% colnames(deconv_matrix))){
-    missing <- celltypes[which(!celltypes %in% colnames(deconv_matrix))]
-    cat("Cell types with zero abundance in all spots:", paste(missing, collapse=", "), "\n")
-    
-    # Add columns of missing cell types
-    deconv_matrix[, missing] <- 0
-    deconv_matrix <- as.matrix(deconv_matrix)
-  }
+celltypes <- RCTD_deconv@cell_type_info$info[[2]]
+if (!all(celltypes %in% colnames(deconv_matrix))){
+  missing <- celltypes[which(!celltypes %in% colnames(deconv_matrix))]
+  cat("Cell types with zero abundance in all spots:", paste(missing, collapse=", "), "\n")
+  
+  # Add columns of missing cell types
+  deconv_matrix[, missing] <- 0
+  deconv_matrix <- as.matrix(deconv_matrix)
 }
+
 write.table(deconv_matrix, file=file.path(output_dir, filename_proportion),
             sep="\t", quote=FALSE, row.names=TRUE)
