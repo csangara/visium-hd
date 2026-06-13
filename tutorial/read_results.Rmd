@@ -1,0 +1,58 @@
+---
+title: "Reading and plotting deconvolution results"
+author: "Chananchida Sang-aram"
+date: "2026-06-13"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+```
+
+The `runRCTD.R` script returns two files
+* `*_proportions.tsv` contains the bin-by-cell type proportion information. 
+* `*_doublet_info.tsv` contains information on the quality of the predictions, i.e., "singlet", "doublet_certain", "doublet_uncertain", and "reject".
+
+Let's read in both of them.
+
+```{r}
+doublet_info <- read.table("tutorial/rctd_doublet_info.tsv",
+                          header = TRUE)
+head(doublet_info)
+
+proportions <- read.table("tutorial/rctd_proportions.tsv",
+                          row.names = 1, header = TRUE)
+head(proportions)
+```
+
+Let's load in the original VisiumHD object to visualize the proportions spatially as we did in the paper. Each bin is represented as a barplot of proportions. We provide the plotting function in `utils/scatterbarplot_function.R` along with the explanation.
+
+```{r, fig.width=12}
+source("utils/scatterbarplot_function.R")
+
+visium_obj_roi <- readRDS("data/Visium_HD_MouseBrain/Visium_HD_MouseBrain_016um_6951x289.rds")
+square_size <- visium_obj_roi@images[["slice1.016um"]]@scale.factors$spot
+
+# Clean up colnames
+colnames(proportions) <- gsub("X[0-9]+", "", colnames(proportions))
+
+# Color palette from ABA
+color_palette <- c("IT.ETGlut" = "#FA0087",
+                   "NP.CT.L6bGlut" = "#61e2a4",
+                   "CTX.CGEGABA" = "#CCFF33",
+                   "CTX.MGEGABA" = "#f954ee",
+                   "Astro.Epen" = "#594a26",
+                   "Vascular" =  "#858881",
+                   "Immune" = "#825f45" )
+
+plot_scatterbar(deconv_props = proportions,
+                square_size = square_size,
+                visium_obj_roi = visium_obj_roi,
+                color_palette = color_palette) +
+  theme(legend.text = element_text(size=12),
+        legend.key.size = unit(0.5, "cm"))
+```
