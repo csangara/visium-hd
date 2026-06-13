@@ -1,10 +1,17 @@
 #!/usr/bin/env Rscript
-Sys.setenv(RETICULATE_MINICONDA_ENABLED = "FALSE")
-
 library(spacexr)
 library(Matrix)
 library(Seurat)
 library(dplyr)
+
+# Limit number of threads to 1, otherwise the job will freeze on the HPC
+# https://github.com/dmcable/spacexr/issues/215#issuecomment-2670969935
+library(RhpcBLASctl)
+Sys.setenv(OMP_NUM_THREADS = "1", MKL_NUM_THREADS = "1",
+           OPENBLAS_NUM_THREADS = "1", NUMEXPR_NUM_THREADS = "1",
+           R_MAX_NUM_THREADS = "1")
+blas_set_num_threads(1)
+omp_set_num_threads(1)
 
 # Get user input
 user_args <- R.utils::commandArgs(trailingOnly=TRUE, asValues=TRUE)
@@ -32,7 +39,7 @@ stopifnot("You do not have write access to the directory." = file.access(output_
 if (!is.null(user_args$num_cores)){
   num_cores <- as.numeric(user_args$num_cores)
 } else {
-  num_cores <- parallel::detectCores()
+  num_cores <- as.numeric(Sys.getenv("SLURM_NTASKS"))
 }
 cat("Using", num_cores, "cores...\n")
 
@@ -76,6 +83,7 @@ spatialRNA_obj_visium <- SpatialRNA(coords = coords,
 
 #### 3. RUN RCTD ####
 cat("Running RCTD with", num_cores, "cores...\n")
+
 RCTD_deconv <- create.RCTD(spatialRNA = spatialRNA_obj_visium,
                            reference = reference_obj,
                            max_cores = num_cores)
@@ -88,7 +96,6 @@ cat("Printing results...\n")
 write.table(RCTD_deconv@results$results_df %>% tibble::rownames_to_column("spot"),
             file=file.path(output_dir, filename_doublet_info),
             sep="\t", quote=FALSE, row.names=FALSE)
-
 
 #### 4.2 OUTPUT PROPORTION MATRIX ####
 # Get doublet proportions
