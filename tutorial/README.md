@@ -31,17 +31,15 @@ This is not strictly necessary since RCTD uses its own data constructors, but us
 
 ### Example data
 
-RCTD requires a single-cell reference and the spatial dataset to be deconvolved.
-*
-* Visium HD data: [Mouse brain FFPE from 10x Genomics]( https://www.10xgenomics.com/datasets/visium-hd-cytassist-gene-expression-libraries-of-mouse-brain-he-v4). Download the "Binned outputs (all bin levels)" file (4.62 GB) and extract it.
+RCTD requires a single-cell reference and the spatial dataset to be deconvolved. The example mouse brain data can be downloaded at ZENODO_LINK. For the scRNA-seq reference, we will be using a subsample of the whole mouse brain dataset from the Allen Brain institute with 10000 genes and ~86,000 cells (the full dataset consists of over 2 million cells). The Visium HD data will be a subsample of the FFPE tissue section from [10x Genomics](https://www.10xgenomics.com/datasets/visium-hd-cytassist-gene-expression-libraries-of-mouse-brain-he-v4). We will be using the 16µm bins subsampled to a small ROI.
 
-
+The expected results can also be downloaded in the same Zenodo link.
 
 ## Steps
 
-The following steps have been tested on the the UGent HPC cluster, which uses a PBS frontend. If your cluster uses a different scheduler (e.g., Grid Engine, Slurm), this will require modification to the job submission script and command.
+It's important to know that the provided scripts are more of a guideline than a flexible pipeline. They have been written for  the UGent HPC cluster, which uses a Slurm scheduler as its backend and Torque as the user interface. Different computing clusters with different schedulers will likely require modification of the job submission script and command.
 
-### 1. Provide input files
+### 1. Provide input data
 
 We have provided the `runRCTD.R` script which essentially performs the same steps from the [RCTD vignette](https://raw.githack.com/dmcable/spacexr/master/vignettes/spatial-transcriptomics.html). This will be used by the `submit_job.pbs` script which will submit the job to the cluster. This PBS file should be modified to include at least 3 arguments: the path to the scRNA-seq Seurat object (as an rds file), the cell type annotation column name, and the path to the Visium HD data. All possible arguments are:
 
@@ -55,7 +53,7 @@ Mandatory arguments:
 Optional arguments:
 --output_dir          - directory to save the results (default: current directory)
 --output_prefix       - file prefix of the output (default: 'rctd_')
---num_cores           - number of cores to use (default: all cores detected by `parallel::detectCores()`)
+--num_cores           - number of cores to use (default: uses number of cores from the `SLURM_NTASKS` environment variable)
 --gene_column         - which gene column to use for the VisiumHD data (default: 2, which uses gene symbols. 1 will return the ENSEMBL ids))
   
 Example:
@@ -76,9 +74,9 @@ Once you have provided the necessary arguments, you can submit the job on the cl
 
 ```qsub submit_job.pbs```
 
-We recommend that you test out the setup on the example data OR the 32µm bin size first to see if everything works as expected, since the 8µm can take a long time. Don't forget to change the walltime and reduce memory limits accordingly to reduce the queue time.
+We recommend that you test out the setup on the example data or a subset of your data first to see if everything works as expected, since the full 8µm dataset can take a long time. Don't forget to change the walltime and reduce memory limits accordingly to reduce the queue time.
 
-The example data took XX minutes with 8 cores on the [UGent HPC doduo cluster](https://docs.hpc.ugent.be/Linux/infrastructure/) which has processing architecture 2x 48-core AMD EPYC 7552 (Rome @ 2.2 GHz). The same cluster took XX hours on the 8µm FFPE brain data.
+The example data took two minutes with 4 cores on the [UGent HPC doduo cluster](https://docs.hpc.ugent.be/Linux/infrastructure/) which has processing architecture 2x 48-core AMD EPYC 7552 (Rome @ 2.2 GHz). The same cluster took XX hours on the 8µm FFPE brain data.
 
 ### 3. Read in and visualize results
 
@@ -87,4 +85,3 @@ You should have two files:
 * `*_doublet_info.tsv` contains information on the quality of the predictions, i.e., "singlet", "doublet_certain", "doublet_uncertain", and "reject".
 
 We provide the "read_results.Rmd" markdown file to show a way to read in the result files, as well as a helper function to create the following "scatterbarplot" visualization.
-
