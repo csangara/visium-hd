@@ -88,7 +88,7 @@ You should now have two files:
 * `*_proportions.tsv` contains the bin-by-cell type proportions 
 * `*_doublet_info.tsv` contains information about the confidence of the predictions, i.e., "singlet", "doublet_certain", "doublet_uncertain", and "reject".
 
-We provide the "read_results.Rmd" markdown file to show a way to read in the result files, as well as a helper function to create the _scatterbarplot_ visualizations used in the paper.
+We provide the `read_results.Rmd` markdown file to show a way to read in the result files, as well as a helper function to create the _scatterbarplot_ visualizations used in the paper.
 
 ## Full data
 

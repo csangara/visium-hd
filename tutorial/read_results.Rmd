@@ -11,30 +11,30 @@ knitr::opts_chunk$set(echo = TRUE)
 
 ```{r}
 library(tidyverse)
+library(Seurat)
+source("utils/scatterbarplot_function.R")
 ```
 
-The `runRCTD.R` script returns two files
-* `*_proportions.tsv` contains the bin-by-cell type proportion information. 
-* `*_doublet_info.tsv` contains information on the quality of the predictions, i.e., "singlet", "doublet_certain", "doublet_uncertain", and "reject".
+The `runRCTD.R` script returns two files:
+* `*_proportions.tsv` contains the bin-by-cell type proportions 
+* `*_doublet_info.tsv` contains information about the confidence of the predictions, i.e., "singlet", "doublet_certain", "doublet_uncertain", and "reject".
 
 Let's read in both of them.
 
 ```{r}
-doublet_info <- read.table("tutorial/rctd_doublet_info.tsv",
+doublet_info <- read.table("tutorial/example_data/rctd_doublet_info.tsv",
                           header = TRUE)
 head(doublet_info)
 
-proportions <- read.table("tutorial/rctd_proportions.tsv",
+proportions <- read.table("tutorial/example_data/rctd_proportions.tsv",
                           row.names = 1, header = TRUE)
 head(proportions)
 ```
 
-Let's load in the original VisiumHD object to visualize the proportions spatially as we did in the paper. Each bin is represented as a barplot of proportions. We provide the plotting function in `utils/scatterbarplot_function.R` along with the explanation.
+Let's load the original Visium HD object and visualize the deconvolution results spatially, as shown in our paper. In this visualization, each bin is represented by a bar plot showing the predicted cell type proportions. The plotting function is provided in `utils/scatterbarplot_function.R`, where all function parameters are documented.
 
 ```{r, fig.width=12}
-source("utils/scatterbarplot_function.R")
-
-visium_obj_roi <- readRDS("data/Visium_HD_MouseBrain/Visium_HD_MouseBrain_016um_6951x289.rds")
+visium_obj_roi <- readRDS("tutorial/example_data/Visium_HD_MouseBrain_016um_6951x289.rds")
 square_size <- visium_obj_roi@images[["slice1.016um"]]@scale.factors$spot
 
 # Clean up colnames
@@ -55,4 +55,54 @@ plot_scatterbar(deconv_props = proportions,
                 color_palette = color_palette) +
   theme(legend.text = element_text(size=12),
         legend.key.size = unit(0.5, "cm"))
+```
+
+
+### Extra: using the scatterbarplot function on the full dataset
+
+The example dataset covers only a small region of the tissue. When working with a complete Visium HD dataset, it is usually more visually appealing to subset the data before visualization. As an example, we will use the mouse brain FFPE dataset at 8µm resolution. The Seurat object and deconvolved proportions for the are available on [Zenodo](https://zenodo.org/records/20716044) under `full_data.zip`.
+
+```{r}
+visium_obj <- readRDS("tutorial/full_data/Visium_HD_MouseBrain_008um.rds")
+visium_obj
+
+brain_props <-  read.table("tutorial/full_data/mousebrain_ffpe_8um_proportions.tsv",
+                          row.names = 1, header = TRUE)
+head(brain_props)
+```
+
+We can subset the Visium HD to a region of interest (ROI) by specifying ranges of x and y coordinates. Note, however, that in the output of `Seurat::GetTissueCoordinates()`, the x coordinate corresponds to the image row index and therefore maps to the y-axis in standard Cartesian coordinates. In addition, In addition, coordinate values increase from top to bottom, rather than from bottom to top as in Cartesian plots.
+
+```{r}
+roi <- c(row_start = 6000,
+         row_end = 7000,
+         col_start = 4000,
+         col_end = 5000)
+
+# Visualize cells in ROI
+cells_roi <- GetTissueCoordinates(visium_obj) %>%
+  filter(x > roi["row_start"] & x < roi["row_end"] & 
+         y > roi["col_start"] & y < roi["col_end"]) %>%
+  pull(cell)
+
+SpatialDimPlot(visium_obj,
+               cells.highlight = cells_roi)
+
+# Subset data
+visium_obj_subset <- visium_obj[,Cells(visium_obj) %in% cells_roi]
+```
+
+Once the ROI has been selected, the scatterbarplot can be generated as before. The function will automatically subset the proportions table to include only bins present in the ROI Visium HD object.
+
+```{r}
+square_size <- visium_obj@images[["slice1.008um"]]@scale.factors$spot
+
+celltype_colors <- read.csv("tutorial/full_data/celltype_colors.csv")
+celltype_colors <- celltype_colors$class_color %>% setNames(celltype_colors$class)
+colnames(brain_props) <- gsub("^X|\\.", "", colnames(brain_props))
+
+plot_scatterbar(deconv_props = brain_props,
+                square_size = square_size,
+                visium_obj_roi = visium_obj_subset,
+                color_palette = celltype_colors)
 ```
